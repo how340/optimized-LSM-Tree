@@ -1,26 +1,16 @@
+// All rights are reserved for the original creator. 
+// XXHash (32 bit), based on Yann Collet's descriptions, 
+// Code source: http://cyan4973.github.io/xxHash/
+
 // //////////////////////////////////////////////////////////
 // xxhash32.h
 // Copyright (c) 2016 Stephan Brumme. All rights reserved.
 // see http://create.stephan-brumme.com/disclaimer.html
-//
+// //////////////////////////////////////////////////////////
 
 #pragma once
 #include <stdint.h> // for uint32_t and uint64_t
 
-/// XXHash (32 bit), based on Yann Collet's descriptions, see http://cyan4973.github.io/xxHash/
-/** How to use:
-    uint32_t myseed = 0;
-    XXHash32 myhash(myseed);
-    myhash.add(pointerToSomeBytes,     numberOfBytes);
-    myhash.add(pointerToSomeMoreBytes, numberOfMoreBytes); // call add() as often as you like to ...
-    // and compute hash:
-    uint32_t result = myhash.hash();
-
-    // or all of the above in one single line:
-    uint32_t result2 = XXHash32::hash(mypointer, numBytes, myseed);
-
-    Note: my code is NOT endian-aware !
-**/
 class XXHash32
 {
 public:
