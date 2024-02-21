@@ -6,34 +6,80 @@
 
 #include <math.h>
 #include <vector>
+#include <map>
+#include <iostream>
 
 #include "key_value.h"
-#include "bloom.h"
-// will use a tree implementation for each run. 
 
-// Each level will be implemented as a tree with n nodes, where the n = level
+// The buffer level uses the CPP map library, which is implemented as black red tree. 
+
 class Buffer {
-    int size;
-    KEY_t range[2] = {0, 0}; // think if this will lead to unexpected behvavior. 
+    std::map<KEY_t, VALUE_t> mp;
+    int max_size; //memory limit allocated at the buffer level
+    int current_size = 0 ; 
+
+    // some status of a disk operation for utility
+    enum status {InsertNotComplete, Success, Underflow, NotFound, BufferFull};
 
 public: 
     // constructor
-    Buffer(int size) : size(size){}
-    // TODO: do we need a destructor here? 
+    Buffer(int size) : max_size(size){
+        max_size = size;
 
-    // insert should check current size, and return bool to indicate if the run is filled. 
-    bool insert(KEY_t key, VALUE_t val){}
+    };
+    // add destructor
+
+    status insert(KEY_t key, VALUE_t val){
+        // TODO: add in check size of the buffer later. 
+        if (current_size >= max_size){
+            std::cout << "the buffer is currently full" << std::endl; 
+            return BufferFull; 
+        } 
+
+        mp[key] = val; // this replaces old value in case of duplicate key
+        current_size ++; // use hard count for proxy of memory right now. 
+        return Success;
+    };
+
+
+    // TODO: discuss with TA on how to implement this the best. 
+    bool del(KEY_t key){
+        return false;
+    }
 
     // search for a key and return value
-    VALUE_t* get(KEY_t key){}
+    VALUE_t* get(KEY_t key){
+        if (mp.find(key) != mp.end()){
+            std::cout << "found the element :" << mp[key] << std::endl; 
+            return &mp[key];
+        } else {
+            std::cout << "Did not find the element" << std::endl; 
+            static VALUE_t ret = -1;
+            return &ret; 
+        };
+    }
 
-    // get current range in buffer 
-    KEY_t* get_range(void){}
+    // Get a range of values stored in the tree.
+    std::vector<VALUE_t> get_range(KEY_t lower, KEY_t upper){
+        // use map iterators to acheive this. 
+        auto start = mp.lower_bound(lower);
+        auto end = mp.upper_bound(upper);
 
-    // clean content in the buffer. 
-    void clear_buffer(void){}
+        std::vector<VALUE_t> ret;
+
+        for (auto it = start; it != end; ++it){
+            std::cout << it -> first << " ==> " << it->second << std::endl;
+            ret.push_back(it->second);
+        };
+        return ret; 
+    }
+
+    // clean content in the buffer. Used when all information are flushed down next level. 
+    void clear_buffer(void){
+        mp.clear();
+        current_size = 0;
+    };
 
 };
-
 
 #endif

@@ -15,7 +15,7 @@ typedef int32_t VALUE_t;
 #define MAX_VAL 2147483647
 #define MIN_VAL -2147483647
 
-// basic int32 key/value pair data structure. 
+// basic int32 key/value pair data structure.
 struct Entry {
     KEY_t key;
     VALUE_t val;
