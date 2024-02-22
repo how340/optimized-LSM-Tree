@@ -33,3 +33,6 @@
 
 # app generated files
 .vscode/
+
+#data file storage
+*.dat

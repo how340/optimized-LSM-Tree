@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-uint32_t MurmurHash3_x86_32(const void* key, int len, uint32_t seed){
+inline uint32_t MurmurHash3_x86_32(const void* key, int len, uint32_t seed){
     const uint8_t* data = (const uint8_t*)key; 
     const int nblocks = len / 4;
     uint32_t h1 = seed;
