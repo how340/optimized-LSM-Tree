@@ -7,23 +7,20 @@
 #include "key_value.h"
 #include "bloom.h"
 
-#define FILE_PATTERN "/store/lsm-XXXXXX"
-
 class Run {
-    BloomFilter bloom;
-    std::vector<KEY_t> fence_pointers;
-    KEY_t max_key;
-    Entry_t *mapping;
-    size_t mapping_length;
-    int mapping_fd;
-    long file_size() {return max_size * sizeof(Entry_t);}
-public:
-    long size, max_size;
-    std::string tmp_file;
-    Run(long, float);
-    ~Run(void);
-    Entry_t * map_read(size_t, off_t);
-    Entry_t * map_read(void);
+    // The two search assistant elements are stored at the LSM level. Thus, these elements just need to be pointers. 
+    BloomFilter* bloom;
+    std::vector<KEY_t>* fence_pointers;
+    std::string file_location; // storage location of the stored binary file
 
+public:
+    Run(std::string file_name, BloomFilter* bloom, std::vector<KEY_t>* fence);
+    ~Run();
+
+    VALUE_t disk_search(int starting_point, size_t bytes_to_read, KEY_t key);
+    int search_fence(KEY_t key);
+    bool search_bloom(KEY_t key);
 };
+
+
 #endif 

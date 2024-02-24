@@ -2,6 +2,7 @@
 #include "run.h"
 #include <iostream>
 
+
 int main(){
     BufferLevel test(10);
 
@@ -46,7 +47,6 @@ int main(){
         std::cout << value << '\n';
     }
 
-    test.save_to_memory("fillname.dat");
 
     // test bloomfilter creation. 
     std::cout << "testing bloom filter" << std::endl;
@@ -60,21 +60,84 @@ int main(){
     long length = test.size();
     int bloom_ratio = 10;
 
+
+    std::vector<Entry_t> vec = test.convert_tree_to_vector();
+
     BloomFilter bloom(length * bloom_ratio);
 
-    test.create_bloom_filter(bloom);
+    test.create_bloom_filter(bloom, vec);
 
     std::cout << "is the key 3 set: "<< bloom.is_set(3) << std::endl;
 
+    // Test buffer saving to SSTable. 
+    // switching to a much larger buffer.
+    std::cout << "testing writing SSTable files" << std::endl;
 
-    // testing run concepts
-    std::cout << "testing run concepts" << std::endl;
+    int buffer_size = 2000; 
+    BufferLevel test_large(buffer_size);
+    
+    int search_key = 756;
+    for( int i = 0; i < buffer_size; i++){
+        if (i == search_key){
+            test_large.insert(i, 42069);
+        } else {
+            test_large.insert(i, 42);
+        }
+        
+    }
 
-    Run test_run(100, 10.0);
+    std::vector<Entry_t> vec_large = test_large.convert_tree_to_vector();
+    std::vector<KEY_t> fence_pointer;
 
-    std::cout << "temp file is  "<< test_run.tmp_file  << std::endl;
+    test_large.save_to_memory("fillname.dat", &fence_pointer, vec_large);
 
-    std::ifstream read_file("fillname.dat", std::ios::in)
+
+    //print the fence pointers
+    std::cout << "reading from fence pointers: " << std::endl;
+    for (int i = 0; i < fence_pointer.size(); ++i) {
+        std::cout << fence_pointer[i];
+        if (i < fence_pointer.size() - 1) {
+            std::cout << ", "; // Print a comma between elements, but not after the last element
+        }
+    }
+    std::cout << std::endl; // Print a newline at the end
+
+    // test reading out the binary file. 
+    std::cout << "testing reading SSTable files" << std::endl;
+
+    std::vector<Entry_t> keyValuePairs;
+    std::ifstream file("fillname.dat", std::ios::binary);
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file for reading");
+    }
+
+    Entry_t kvp;
+    // Move the following to LSM tree file -----------------------------------------------------
+    // this will be essentially how we use fence pointers to interact with the file structure.
+    // use fence post to look for the search key directly in file. 
+    // TODO: also some edge cases. Implement test later. 
+    for(int i = 0; i < fence_pointer.size() ; i++){
+        std::cout << fence_pointer[i] << std::endl;
+        if (search_key > fence_pointer[i] && search_key < fence_pointer[i+1]){
+            file.seekg(i * 512, std::ios::beg);
+            size_t numBytesToRead = 512; // Specify how many bytes you want to read
+            std::vector<Entry_t> buffer(numBytesToRead);
+
+            while(numBytesToRead > 0){
+                file.read(reinterpret_cast<char*>(&kvp.key), sizeof(kvp.key));
+                file.read(reinterpret_cast<char*>(&kvp.val), sizeof(kvp.val));
+                keyValuePairs.push_back(kvp);
+                numBytesToRead--;
+            }       
+        }
+    }
+
+    file.close();
+
+    Run run1("fillname.dat", &bloom, &fence_pointer);
+
+    // add test for the run functionalities. 
 
 
     return 0;
