@@ -105,14 +105,15 @@ public:
     between level and runs. 
     
     */
-    void create_bloom_filter(BloomFilter& bloom, const std::vector<Entry_t>& vec){
+    void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec){
         for (int i = 0; i < mp.size(); i++){
-            bloom.set(vec[i].key);
+            bloom->set(vec[i].key);
         }
     };
 
     // writes content of buffer to file on disk. 
-    void save_to_memory(std::string filename,  std::vector<KEY_t>* fence_pointer, const std::vector<Entry_t>& vec){
+    // passing by reference needs to be worked on a bit here. Don't know how this came to be. 
+    void save_to_memory(std::string filename,  std::vector<KEY_t>* fence_pointer, std::vector<Entry_t>& vec){
         // two pointers to keep track of memory and fence_pointer traversal. 
         int memory_cnt = 0, fence_pointer_index = 0;
         std::ofstream out(filename, std::ios::binary);
