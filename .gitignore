@@ -36,3 +36,6 @@
 
 #data file storage
 *.dat
+
+#binary program file. 
+program

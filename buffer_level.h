@@ -23,7 +23,6 @@ class BufferLevel {
     int current_size = 0 ; 
     const int MEMORY_PAGE_SIZE = 512;
     // some status of a disk operation for utility
-    enum status {Success, Underflow, NotFound, BufferFull};
 
 public: 
     // constructor
@@ -33,16 +32,16 @@ public:
 
     // TODO: we don't need a destructor here right? 
 
-    status insert(KEY_t key, VALUE_t val){
+    int insert(KEY_t key, VALUE_t val){
         if (current_size >= max_size){
             std::cout << "the buffer is currently full" << std::endl; 
-            return BufferFull; 
+            return -1; 
         } 
 
         mp[key] = val; // this replaces old value in case of duplicate key
         current_size ++; 
 
-        return Success;
+        return 0;
     };
 
     // TODO: discuss with TA on how to implement this the best. 

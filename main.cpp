@@ -1,5 +1,6 @@
 #include "buffer_level.h"
 #include "run.h"
+#include "lsm_tree.h"
 #include <iostream>
 
 
@@ -55,6 +56,29 @@ int main(){
     } else { 
         std::cout << "value not found!" <<std::endl; 
     }
+
+    // Testing for constructing the LSM tree. 
+    std::cout << "Testing LSM tree construction" << std::endl;
+
+    LSM_Tree lsm_tree(10, 3);
+
+    std::cout << "The Root node has these attributes"; 
+
+    std::cout << "\nlevel:" << lsm_tree.root->level << std::endl; 
+    std::cout << "num of runs:" << lsm_tree.root->num_of_runs << std::endl; 
+    std::cout << "Run_storage:" << typeid(lsm_tree.root->run_storage).name() << std::endl; 
+
+    //inserting into buffer in LSM tree. 
+    std::cout << "The Root node has these attributes" << std::endl;
+
+    for( int i = 0; i < 1001; i++){
+        if (i == search_key){
+            lsm_tree.buffer_insert(i, 42069);
+        } else {
+            lsm_tree.buffer_insert(i, 42);
+        }   
+    }
+
 
     return 0;
 };

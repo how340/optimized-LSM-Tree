@@ -72,27 +72,30 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point, size_t bytes_to_re
     return nullptr;// return null if we couldn't find the result. 
 }
 
-std::vector<Entry_t> Run::range_disk_search(KEY_t left, KEY_t right){
-    std::vector<Entry_t> search_result; 
 
-    int left_post = -1;
-    int right_post = -1;
+// TODO: Might just come back to this later. Probably not needed for midway check. 
+// std::vector<Entry_t> Run::range_disk_search(KEY_t left, KEY_t right){
+//     std::vector<Entry_t> search_result; 
 
-    if(Run::search_bloom(left)){
-        left_post = Run::search_fence(left);
-    }
-    if(Run::search_bloom(right)){
-        right_post = Run::search_fence(right);
-    }
+//     int left_post = -1;
+//     int right_post = -1;
 
-    if(left_post == -1 && right_post == -1){// no value in the disk.
-        return search_result;
-    }else if (left_post == -1){
-        left_post = 0;
-    }else if (right_post == -1){
-        right_post = fence->size() - 1;
-    }
+//     if(Run::search_bloom(left)){
+//         left_post = Run::search_fence(left);
+//     }
+//     if(Run::search_bloom(right)){
+//         right_post = Run::search_fence(right);
+//     }
 
-    // search through the valid pages for here. 
+//     if(left_post == -1 && right_post == -1){// no value in the disk.
+//         return search_result;
+//     }else if (left_post == -1){
+//         left_post = 0;
+//     }else if (right_post == -1){
+//         right_post = fence->size() - 1;
+//     }
 
-}
+//     // search through the valid pages for here. 
+
+//     return search_result;
+// }

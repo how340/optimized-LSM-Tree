@@ -4,6 +4,8 @@
 
 #include "buffer_level.h"
 #include "key_value.h"
+#include "run.h"
+
 /* Functions that the LSM tree level should have. 
 
 1. Merge runs within levels based on merge policy. 
@@ -32,17 +34,35 @@
 
 class LSM_Tree{
 
-    BufferLevel::BufferLevel(1000);//arbituary level for now. 
-    int bits_per_entry; 
+    int size = 1000;
+    BufferLevel* in_mem = new BufferLevel(size);//Think about destructor here. 
+    int bloom_bits_per_entry; 
+    int level_ratio;
 
+    struct Run_tree_node{
+        size_t level; 
+        size_t num_of_runs;
+        Run_tree_node* next_level; // point to the next_run_tree_node
+        std::vector<Run*> run_storage;
 
+        //Default constructor
+        Run_tree_node(size_t lvl, size_t numRuns, Run_tree_node* nextLvl = nullptr) 
+        : level(lvl), num_of_runs(numRuns), next_level(nextLvl)  {};
+    };
+
+    typedef struct Run_tree_node Run_Tree_Node; 
+    
+    enum status {Success, Underflow, NotFound, BufferFull};
 public: 
-    LSM_Tree(int bits_ratio): bits_per_entry(bits_ratio); 
+    LSM_Tree(size_t bits_ratio, size_t level_ratio);
+    ~LSM_Tree();
+    Run_Tree_Node* root; 
 
-    ~LSM_Tree():
+    int buffer_insert(KEY_t key, VALUE_t val);
+
 
     
 
-}
+};
 
 #endif 

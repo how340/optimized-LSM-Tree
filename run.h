@@ -22,7 +22,7 @@ public:
 
     //search for single value
     std::unique_ptr<Entry_t> disk_search(int starting_point, size_t bytes_to_read, KEY_t key);
-    std::vector<Entry_t> range_disk_search();
+    //std::vector<Entry_t> range_disk_search(); Implement later after having LSM tree running. 
 };
 
 
