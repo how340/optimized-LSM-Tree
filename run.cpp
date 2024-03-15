@@ -24,6 +24,11 @@ bool Run::search_bloom(KEY_t key){
     return bloom->is_set(key);
 }
 
+std::string Run::get_file_location()
+{
+    return file_location;
+}
+
 int Run::search_fence(KEY_t key){   
     int starting_point; 
 

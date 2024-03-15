@@ -16,7 +16,6 @@ int main(){
         } else {
             test_large.insert(i, 42);
         }
-        
     }
 
     std::vector<Entry_t> vec_large = test_large.convert_tree_to_vector();
@@ -58,26 +57,52 @@ int main(){
     }
 
     // Testing for constructing the LSM tree. 
-    std::cout << "Testing LSM tree construction" << std::endl;
+    std::cout << "\nTesting LSM tree construction\n" << std::endl;
 
     LSM_Tree lsm_tree(10, 3);
 
     std::cout << "The Root node has these attributes"; 
 
     std::cout << "\nlevel:" << lsm_tree.root->level << std::endl; 
-    std::cout << "num of runs:" << lsm_tree.root->num_of_runs << std::endl; 
+    std::cout << "num of runs:" << lsm_tree.root->max_num_of_runs << std::endl; 
     std::cout << "Run_storage:" << typeid(lsm_tree.root->run_storage).name() << std::endl; 
 
     //inserting into buffer in LSM tree. 
     std::cout << "The Root node has these attributes" << std::endl;
 
-    for( int i = 0; i < 1001; i++){
+    for( int i = 0; i < 1000000; i++){
         if (i == search_key){
             lsm_tree.buffer_insert(i, 42069);
         } else {
             lsm_tree.buffer_insert(i, 42);
         }   
     }
+
+    std::cout << "\nTesting LSM tree search" << std::endl;
+    KEY_t test_key_1 = 20;
+    auto result = lsm_tree.search_value(test_key_1);
+    if (result) {
+        std::cout << "Searching on disk with key 20, found value: " << result->val << std::endl;
+    } else {
+        std::cout << "Searching on disk with key 20, value not found" << std::endl;
+    }
+
+    result = lsm_tree.search_value(search_key);
+    if (result) {
+        std::cout << "Searching on disk with key 756, found value: " << result->val << std::endl;
+    } else {
+        std::cout << "Searching on disk with key 756, value not found" << std::endl;
+    }
+
+    // TODO: segmentation error when value not found. Something wrong. 
+    result = lsm_tree.search_value(3000);
+    if (result) {
+        std::cout << "Searching in memory with key 3001, found value: " << result->val << std::endl;
+    } else {
+        std::cout << "Searching in memory with key 3001, value not found" << std::endl;
+    }
+
+    // TODO: there is a bug here when writing to or coming back from binary files. Need to fix. 
 
 
     return 0;

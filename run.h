@@ -19,6 +19,7 @@ public:
 
     int search_fence(KEY_t key);
     bool search_bloom(KEY_t key);
+    std::string get_file_location();
 
     //search for single value
     std::unique_ptr<Entry_t> disk_search(int starting_point, size_t bytes_to_read, KEY_t key);

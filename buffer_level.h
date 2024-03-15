@@ -54,13 +54,14 @@ public:
     // search for a key and return value
     // TODO: this actually needs more work. 
     // The object will return an iterator, the higher level function need to consider this for searching. 
-    auto get(KEY_t key){
-        if (mp.find(key) != mp.end()){
-            std::cout << "found the element :" << mp[key] << std::endl; 
-        } else {
-            std::cout << "Did not find the element" << std::endl; 
-        };
-        return mp.find(key);
+    std::unique_ptr<Entry_t> get(KEY_t key){
+        auto it = mp.find(key);
+        if (it != mp.end()) {
+            std::cout << "Found the element: " << it->second << std::endl;
+            // Assuming Entry_t can be constructed or assigned from the type of `it->second`
+            return std::make_unique<Entry_t>(Entry_t{it->first, it->second});
+        }
+        return nullptr;
     }
 
     // Get a range of values stored in the tree.
