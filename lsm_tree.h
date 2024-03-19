@@ -38,11 +38,13 @@
 
 class LSM_Tree{
 
-    int size = 1000;
-    BufferLevel* in_mem = new BufferLevel(size);//Think about destructor here. 
+    int buffer_size;
+    BufferLevel* in_mem;//Think about destructor here. 
     int bloom_bits_per_entry; 
     int level_ratio;
     const int MEMORY_PAGE_SIZE = 512;
+    int mode; // determine whether we run the baseline LSM implementation or optimized version. 
+                // 0 means optimized version, 1 is un-optimized
 
     struct Level_node{
         size_t level; 
@@ -55,17 +57,18 @@ class LSM_Tree{
         : level(lvl), max_num_of_runs(numRuns), next_level(nextLvl)  {};
     };
 
-    typedef struct Level_node Level_Node; 
-    
-    enum status {Success, Underflow, NotFound, BufferFull};
+    typedef struct Level_node Level_Node;
+
 public: 
-    LSM_Tree(size_t bits_ratio, size_t level_ratio);
+    LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode);
     ~LSM_Tree();
     Level_Node* root; 
-
-    int buffer_insert(KEY_t key, VALUE_t val);
+    
+    int put(KEY_t key, VALUE_t val);
+    std::unique_ptr<Entry_t> get(KEY_t key);
+    
     std::string generateRandomString(size_t length);
-    std::unique_ptr<Entry_t> search_value(KEY_t key);
+    
     void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec);
     void save_to_memory(std::string filename,  std::vector<KEY_t>* fence_pointer, std::vector<Entry_t>& vec);
 

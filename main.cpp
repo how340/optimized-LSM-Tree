@@ -1,109 +1,117 @@
 #include "buffer_level.h"
 #include "run.h"
 #include "lsm_tree.h"
+#include <filesystem> 
 #include <iostream>
-
-
-int main(){
-
-    int buffer_size = 2000; 
-    BufferLevel test_large(buffer_size);
+#include "sys.h"
     
+namespace fs = std::filesystem;
+
+
+void command_loop(LSM_Tree& tree) {
+    char command;
+    KEY_t key_a, key_b;
+    VALUE_t val;
+
+
+    while (std::cin >> command) {
+        switch (command) {
+        case 'p':
+            std::cin >> key_a >> val;
+
+            if (val < MIN_VAL || val > MAX_VAL) {
+                die("Could not insert value " + std::to_string(val) + ": out of range.");
+            } else {
+                tree.put(key_a, val);
+            }
+
+            break;
+        case 'g':
+            std::cin >> key_a;
+            tree.get(key_a);
+            break;
+
+
+        default:
+            die("Invalid command.");
+        }
+    }
+}
+
+
+int main(int argc, char *argv[]){
+    int opt; 
+    size_t buffer_size, test_size; 
+
+    if (argc > 1) {
+        // Loop through all arguments (skipping argv[0], which is the program name)
+        buffer_size = std::stoi(argv[1]);
+        test_size = std::stoi(argv[2]);
+
+        std::cout << "buffer size: " << buffer_size << std::endl; 
+        std::cout << "test size: " << test_size << std::endl; 
+    } else {
+        std::cout << "No command-line arguments provided." << std::endl;
+    }
+
     int search_key = 756;
-    for( int i = 0; i < buffer_size; i++){
-        if (i == search_key){
-            test_large.insert(i, 42069);
-        } else {
-            test_large.insert(i, 42);
+    
+
+    // std::cout << "\n basic LSM tree benchmark \n" << std::endl;
+
+    LSM_Tree lsm_tree(10, 3, buffer_size, 1);
+    command_loop(lsm_tree);
+    // std::cout << lsm_tree.root->level << std::endl;
+
+    // // start time
+    // auto start = std::chrono::high_resolution_clock::now();
+
+    // for( int i = 0; i < test_size; i++){
+    //     if (i == search_key){
+    //         lsm_tree.put(i, 42069);
+    //     } else {
+    //         lsm_tree.put(i, 42);
+    //     }   
+    // }
+
+    // // Record the end time
+    // auto end = std::chrono::high_resolution_clock::now();
+    
+    // // Calculate the duration in milliseconds
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    
+    // // Output the duration
+    // std::cout << lsm_tree.get(search_key)->val<< std::endl;
+
+
+    // // Output the duration
+    // std::cout << "Program executed in " << duration.count() << " milliseconds." << std::endl;
+
+    // // Printing content of saved file
+    // // std::vector<Entry_t> buffer;// read files in questions into buffer. 
+
+    // // std::ifstream file("lsm_tree_i0yw97.dat", std::ios::binary);
+    
+    // // if (!file.is_open()) throw std::runtime_error("Unable to open file for writing");
+
+    // // Entry_t entry;
+    // // while (file.read(reinterpret_cast<char*>(&entry), sizeof(entry))) {
+    // //     std::cout << entry.key << ":" << entry.val << ", ";
+    // //     buffer.push_back(entry);
+    // // }
+    // // file.close(); 
+
+    fs::path path_to_directory{"./"};
+
+    // Iterate over the directory
+    for (const auto& entry : fs::directory_iterator(path_to_directory)) {
+        // Check if the file extension is .dat
+        if (entry.path().extension() == ".dat") {
+            // If it is, delete the file
+            fs::remove(entry.path());
+            std::cout << "Deleted: " << entry.path() << std::endl;
         }
     }
-
-    std::vector<Entry_t> vec_large = test_large.convert_tree_to_vector();
-    std::vector<KEY_t> fence_pointer;
-    BloomFilter bloom_large(20000); 
-
-    test_large.save_to_memory("fillname.dat", &fence_pointer, vec_large);
-    test_large.create_bloom_filter(&bloom_large, vec_large);
-
-    // add test for the run functionalities. 
-    std::cout << "\ntesting using basic run functionalities: \n" << std::endl;
-
-    Run run1("fillname.dat", &bloom_large, &fence_pointer);
-    std::unique_ptr<Entry_t> entry = nullptr;
-  
-    std::cout << run1.search_bloom(search_key) << std::endl;
-
-    //print the fence pointers
-    std::cout << "reading from fence pointers: " << std::endl;
-    for (int i = 0; i < fence_pointer.size(); ++i) {
-        std::cout << fence_pointer[i];
-        if (i < fence_pointer.size() - 1) {
-            std::cout << ", "; // Print a comma between elements, but not after the last element
-        }
-    }
-    std::cout << std::endl; // Print a newline at the end
-
-    int starting_point = run1.search_fence(search_key);
-    std::cout << starting_point << std::endl;
-    if (starting_point != -1){
-        entry = run1.disk_search(starting_point, 512, search_key);
-        std::cout << entry->key << std::endl;
-    }
-
-    if (entry){
-        std::cout << "we found value: " << entry->val << std::endl; 
-    } else { 
-        std::cout << "value not found!" <<std::endl; 
-    }
-
-    // Testing for constructing the LSM tree. 
-    std::cout << "\nTesting LSM tree construction\n" << std::endl;
-
-    LSM_Tree lsm_tree(10, 3);
-
-    std::cout << "The Root node has these attributes"; 
-
-    std::cout << "\nlevel:" << lsm_tree.root->level << std::endl; 
-    std::cout << "num of runs:" << lsm_tree.root->max_num_of_runs << std::endl; 
-    std::cout << "Run_storage:" << typeid(lsm_tree.root->run_storage).name() << std::endl; 
-
-    //inserting into buffer in LSM tree. 
-    std::cout << "The Root node has these attributes" << std::endl;
-
-    for( int i = 0; i < 1000000; i++){
-        if (i == search_key){
-            lsm_tree.buffer_insert(i, 42069);
-        } else {
-            lsm_tree.buffer_insert(i, 42);
-        }   
-    }
-
-    std::cout << "\nTesting LSM tree search" << std::endl;
-    KEY_t test_key_1 = 20;
-    auto result = lsm_tree.search_value(test_key_1);
-    if (result) {
-        std::cout << "Searching on disk with key 20, found value: " << result->val << std::endl;
-    } else {
-        std::cout << "Searching on disk with key 20, value not found" << std::endl;
-    }
-
-    result = lsm_tree.search_value(search_key);
-    if (result) {
-        std::cout << "Searching on disk with key 756, found value: " << result->val << std::endl;
-    } else {
-        std::cout << "Searching on disk with key 756, value not found" << std::endl;
-    }
-
-    // TODO: segmentation error when value not found. Something wrong. 
-    result = lsm_tree.search_value(3000);
-    if (result) {
-        std::cout << "Searching in memory with key 3001, found value: " << result->val << std::endl;
-    } else {
-        std::cout << "Searching in memory with key 3001, value not found" << std::endl;
-    }
-
-    // TODO: there is a bug here when writing to or coming back from binary files. Need to fix. 
-
 
     return 0;
 };

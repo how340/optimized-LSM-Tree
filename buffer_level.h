@@ -14,15 +14,14 @@
 
 #include "key_value.h"
 #include "bloom.h"
-// The buffer level uses the CPP map library, which is implemented as black red tree. 
 
+// The buffer level uses the CPP map library, which is implemented as black red tree.
 
 class BufferLevel {
     std::map<KEY_t, VALUE_t> mp;
     int max_size; //memory limit allocated at the buffer level
     int current_size = 0 ; 
     const int MEMORY_PAGE_SIZE = 512;
-    // some status of a disk operation for utility
 
 public: 
     // constructor
@@ -118,6 +117,7 @@ public:
         int memory_cnt = 0, fence_pointer_index = 0;
         std::ofstream out(filename, std::ios::binary);
 
+        std::cout << "incoming vector size is : " << vec.size() << std::endl;
         if (!out.is_open()) {
             throw std::runtime_error("Unable to open file for writing");
         }
