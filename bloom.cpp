@@ -53,3 +53,7 @@ bool BloomFilter::is_set(KEY_t key) const {
          && bitarray.test(hash_2(key))
          && bitarray.test(hash_3(key)));
 };
+
+boost::dynamic_bitset<> BloomFilter::return_bitarray(){
+    return bitarray;
+}; 

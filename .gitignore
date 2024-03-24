@@ -43,3 +43,4 @@ program
 #workload related files 
 *.sh
 workloads/
+*.txt

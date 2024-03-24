@@ -27,7 +27,8 @@ public:
     // check bit in bitarray
     bool is_set(KEY_t) const;
 
-    // TODO: maybe we need to include another function to convert in memory bloom to on-file bloom. 
+    // return copy of bitarray; 
+    boost::dynamic_bitset<> return_bitarray(); 
 };
 
 #endif

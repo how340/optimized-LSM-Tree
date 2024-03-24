@@ -77,6 +77,15 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point, size_t bytes_to_re
     return nullptr;// return null if we couldn't find the result. 
 }
 
+std::vector<KEY_t> Run::return_fence()
+{
+    return *fence_pointers;
+}
+
+BloomFilter Run::return_bloom()
+{
+    return *bloom;
+}
 
 // TODO: Might just come back to this later. Probably not needed for midway check. 
 // std::vector<Entry_t> Run::range_disk_search(KEY_t left, KEY_t right){

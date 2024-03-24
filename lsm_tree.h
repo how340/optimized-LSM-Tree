@@ -71,11 +71,16 @@ public:
     
     void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec);
     void save_to_memory(std::string filename,  std::vector<KEY_t>* fence_pointer, std::vector<Entry_t>& vec);
-    void exit_save_to_memory();
-    void level_meta_save();
 
+    // saving files on quit command
+    void exit_save_memory();
+    void level_meta_save();
     void exit_save();
 
+    // reconstructing file structure on load
+    void load_run(Run run);// load a 
+    void generate_level();//create a new level
+    void load_memory();//load memory content from a file. 
 };
 
 #endif 

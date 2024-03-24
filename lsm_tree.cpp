@@ -160,7 +160,7 @@ void LSM_Tree::exit_save()
     // write data structure to file. 
     // memory get its own designated file. named LSM_memory.dat. Don't need meta data. 
     // secondary memory is maintained by saving another meta data file for the file structure. 
-    exit_save_to_memory();
+    exit_save_memory();
     level_meta_save();
 }
 
@@ -201,7 +201,7 @@ void LSM_Tree::save_to_memory(std::string filename,  std::vector<KEY_t>* fence_p
 }
 
 // exit save memory function
-void LSM_Tree::exit_save_to_memory(){
+void LSM_Tree::exit_save_memory(){
     int memory_cnt = 0;
     std::string filename = "lsm_tree_memory.dat";
     std::vector<Entry_t> buffer = in_mem->convert_tree_to_vector();
@@ -226,28 +226,75 @@ void LSM_Tree::exit_save_to_memory(){
 
 
 void LSM_Tree::level_meta_save(){
+    // storing each of the secondary storage related data in different files. 
+    // bloom and fence pointer binary size are stored as txt in the meta data file. easier to load data on boot. 
+    std::string meta_data = "lsm_tree_level_meta.txt";
+    std::string fence_data = "lsm_tree_fence.dat";
+    std::string bloom_data = "lsm_tree_bloom.dat";
 
-    std::string filename = "lsm_tree_level_meta.dat";
+    std::ofstream meta(meta_data);
+    std::ofstream fence(fence_data, std::ios::binary);
+    std::ofstream bloom(bloom_data, std::ios::binary);
 
-    std::ofstream out(filename, std::ios::binary);
+    if (!meta.is_open() || !fence.is_open() || !bloom.is_open()) {
+        std::cerr << "Failed to open the files." << std::endl;
+    }
 
     Level_Node* cur = root; 
 
+    // write meta data to the LSM tree first. 
+    meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size  << " "  << mode << " "; 
 
     while(cur){
         std::cout << cur->level <<": "; 
+        // for each level: write current level, level limit, run count, then specific data for each run. 
+        meta << cur->level << " " << cur->max_num_of_runs << " " << cur->run_storage.size() << " ";
 
+        // for each run: write filename, bloom size and fence size. 
         for (int i = 0; i < cur->run_storage.size(); i++){
             std::cout << cur->run_storage[i].get_file_location() << ", ";
+        
+            // write bloom filter to binary file. TODO: debug this. maybe the spacing of things could be wrong. 
+            BloomFilter temp_bloom = cur->run_storage[i].return_bloom(); 
+            boost::dynamic_bitset<> temp_bitarray = temp_bloom.return_bitarray();
+
+            bloom.write(reinterpret_cast<const char*>(&temp_bitarray), sizeof(temp_bitarray));
+            // check number of bits wrote. 
+            std::streampos bloom_size = bloom.tellp();// need to be sure this is actually correct. 
+
+            if (bloom_size != -1) { // tellp() returns -1 on failure
+                std::cout << "Number of bytes written: " << bloom_size << std::endl;
+            } else {
+                std::cerr << "Error occurred while writing to the file." << std::endl;
+            }
+
+            // Write fence pointers to binary file
+            std::vector<KEY_t> temp_fence = cur->run_storage[i].return_fence(); 
+
+            fence.write(reinterpret_cast<const char*>(temp_fence.data()), temp_fence.size() * sizeof(KEY_t));
+
+            std::streampos fence_size = bloom.tellp();// need to be sure this is actually correct. Don't think this quite works. 
+
+            if (fence_size != -1) { // tellp() returns -1 on failure
+                std::cout << "Number of bytes written: " << fence_size << std::endl;
+            } else {
+                std::cerr << "Error occurred while writing to the file." << std::endl;
+            }
+
+            // update meta headers on these data. 
+            std::string bloomStr = std::to_string(static_cast<std::streamoff>(bloom_size));
+            std::string fenceStr = std::to_string(static_cast<std::streamoff>(fence_size));
+
+            meta << cur->run_storage[i].get_file_location() << " " << bloomStr << " " << fenceStr << " ";
         }
-        std::cout << "end" << std::endl;
+
+        std::cout << "----------------------------" << std::endl;
         cur = cur->next_level;
     }
 
-
-    out.close(); 
+    meta.close(); 
+    fence.close(); 
+    bloom.close();
 }
-
-
 
 
