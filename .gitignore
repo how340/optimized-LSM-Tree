@@ -39,3 +39,7 @@
 
 #binary program file. 
 program
+
+#workload related files 
+*.sh
+workloads/

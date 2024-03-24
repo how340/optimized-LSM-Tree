@@ -33,7 +33,7 @@ public:
 
     int insert(KEY_t key, VALUE_t val){
         if (current_size >= max_size){
-            std::cout << "the buffer is currently full" << std::endl; 
+            // std::cout << "the buffer is currently full" << std::endl; 
             return -1; 
         } 
 
@@ -56,7 +56,7 @@ public:
     std::unique_ptr<Entry_t> get(KEY_t key){
         auto it = mp.find(key);
         if (it != mp.end()) {
-            std::cout << "Found the element: " << it->second << std::endl;
+            // std::cout << "Found the element: " << it->second << std::endl;
             // Assuming Entry_t can be constructed or assigned from the type of `it->second`
             return std::make_unique<Entry_t>(Entry_t{it->first, it->second});
         }
@@ -148,5 +148,7 @@ public:
     }
 
 };
+
+    
 
 #endif

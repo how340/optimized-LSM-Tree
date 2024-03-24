@@ -12,13 +12,14 @@ LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, in
 }
 
 LSM_Tree::~LSM_Tree() {
+        // TODO: for sure there is memory leak. need to properly delete. 
         delete in_mem; // Free the dynamically allocated in-memory buffer
         // Consider implementing or calling a method here to clean up other dynamically allocated resources, if any
         // probably want to delete the tree structure from root recursively. 
 }
 
 //TODO: consider adding overwrite function? Add delete later as well. 
-int LSM_Tree::put(KEY_t key, VALUE_t val)
+void LSM_Tree::put(KEY_t key, VALUE_t val)
 {
     int insert_result; 
     insert_result = in_mem->insert(key, val);
@@ -32,7 +33,7 @@ int LSM_Tree::put(KEY_t key, VALUE_t val)
         // TODO: at some point, the size of all of the files will exceed the memory. Also, we might need to allow different merge policies. 
         // two main ways of doing this, either do external sorting, or do the partial compaction with the following level. 
         while (cur && cur->run_storage.size() == cur->max_num_of_runs){
-            std::cout << "Current level #: " << cur->level << " is full. Move data to next level" << std::endl;
+            //std::cout << "Current level #: " << cur->level << " is full. Move data to next level" << std::endl;
 
             if (!cur->next_level){// next level doesn't exist. 
                 cur->next_level = new Level_Node(cur->level + 1, cur->max_num_of_runs);
@@ -63,7 +64,7 @@ int LSM_Tree::put(KEY_t key, VALUE_t val)
         // re-sort, create new bloom, new fence pointer, create new run in next level. 
         std::sort(buffer.begin(), buffer.end());
 
-        std::cout << "vector size; " << buffer.size() << std::endl;
+        //std::cout << "vector size; " << buffer.size() << std::endl;
 
         std::string merged_file_name = "lsm_tree_" + generateRandomString(6) + ".dat";
 
@@ -80,10 +81,9 @@ int LSM_Tree::put(KEY_t key, VALUE_t val)
         in_mem->clear_buffer(); 
         in_mem->insert(key, val);
 
-        return insert_result;
+    
     } 
-
-    return insert_result;
+    //std::cout << "inserted k/v pair: " << key << "," << val << std::endl;
 }
 
 // helper function for generating a file_name for on-disk storage file name. 
@@ -107,6 +107,7 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key){
     std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
 
     if (in_mem_result){ //check memory buffer first. 
+        std::cout << "found in memory" << in_mem_result->val << std::endl;
         return in_mem_result; 
     } 
     else {
@@ -121,7 +122,9 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key){
 
                 if (starting_point != -1){
                     entry = cur->run_storage[i].disk_search(starting_point, MEMORY_PAGE_SIZE, key);
-                    if (entry){return entry;} 
+                    if (entry){
+                        std::cout << entry->val << ", ";
+                        return entry;} 
                 }
             };
         }
@@ -136,16 +139,30 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key){
 
                     if (starting_point != -1){
                         entry = cur->run_storage[i].disk_search(starting_point, MEMORY_PAGE_SIZE, key);
-                    if (entry){return entry;} 
+                    if (entry){
+                        std::cout << entry->val << ", ";
+                        return entry;
+                        } 
                     }
                 }
             }   
                 
         }
     }
+    std::cout << "not found" << std::endl; 
     return nullptr;
 }
 
+// this function will save the in-memory data and maintain file structure for data persistence. 
+void LSM_Tree::exit_save()
+{
+    //save in memory component to file
+    // write data structure to file. 
+    // memory get its own designated file. named LSM_memory.dat. Don't need meta data. 
+    // secondary memory is maintained by saving another meta data file for the file structure. 
+    exit_save_to_memory();
+    level_meta_save();
+}
 
 void LSM_Tree::create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec){
         for (int i = 0; i < vec.size(); i++){
@@ -180,5 +197,57 @@ void LSM_Tree::save_to_memory(std::string filename,  std::vector<KEY_t>* fence_p
     fence_pointer->push_back(vec.back().key);
 
     out.close(); 
-    std::cout << "Successfully written to file : " << filename << std::endl; 
+    //std::cout << "Successfully written to file : " << filename << std::endl; 
 }
+
+// exit save memory function
+void LSM_Tree::exit_save_to_memory(){
+    int memory_cnt = 0;
+    std::string filename = "lsm_tree_memory.dat";
+    std::vector<Entry_t> buffer = in_mem->convert_tree_to_vector();
+
+    std::ofstream out(filename, std::ios::binary);
+
+    if (!out.is_open()) {
+        throw std::runtime_error("Unable to open file for writing");
+    }
+
+    for (const auto& entries : buffer){// go through all entries.
+        out.write(reinterpret_cast<const char*>(&entries.key), sizeof(entries.key));
+        out.write(reinterpret_cast<const char*>(&entries.val), sizeof(entries.val));
+        
+        memory_cnt = sizeof(entries.key) + sizeof(entries.val) + memory_cnt; 
+        
+        if (memory_cnt == MEMORY_PAGE_SIZE)  memory_cnt = 0; // reached page maximum
+    }  
+
+    out.close(); 
+}
+
+
+void LSM_Tree::level_meta_save(){
+
+    std::string filename = "lsm_tree_level_meta.dat";
+
+    std::ofstream out(filename, std::ios::binary);
+
+    Level_Node* cur = root; 
+
+
+    while(cur){
+        std::cout << cur->level <<": "; 
+
+        for (int i = 0; i < cur->run_storage.size(); i++){
+            std::cout << cur->run_storage[i].get_file_location() << ", ";
+        }
+        std::cout << "end" << std::endl;
+        cur = cur->next_level;
+    }
+
+
+    out.close(); 
+}
+
+
+
+

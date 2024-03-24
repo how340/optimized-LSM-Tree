@@ -64,13 +64,17 @@ public:
     ~LSM_Tree();
     Level_Node* root; 
     
-    int put(KEY_t key, VALUE_t val);
+    void put(KEY_t key, VALUE_t val);
     std::unique_ptr<Entry_t> get(KEY_t key);
     
     std::string generateRandomString(size_t length);
     
     void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec);
     void save_to_memory(std::string filename,  std::vector<KEY_t>* fence_pointer, std::vector<Entry_t>& vec);
+    void exit_save_to_memory();
+    void level_meta_save();
+
+    void exit_save();
 
 };
 
