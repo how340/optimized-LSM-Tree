@@ -68,7 +68,7 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
 
         std::string merged_file_name = "lsm_tree_" + generateRandomString(6) + ".dat";
 
-        BloomFilter* merged_bloom = new BloomFilter(buffer_size*bloom_bits_per_entry);
+        BloomFilter* merged_bloom = new BloomFilter(bloom_bits_per_entry*buffer.size());
         std::vector<KEY_t>* merged_fence_pointer = new std::vector<KEY_t>;
 
         LSM_Tree::save_to_memory(merged_file_name, merged_fence_pointer, buffer);
@@ -164,6 +164,19 @@ void LSM_Tree::exit_save()
     level_meta_save();
 }
 
+void LSM_Tree::print()
+{
+    Level_Node* cur = root; 
+
+    while(cur){
+        std::cout<< cur->level << ": "<< std::endl; 
+        for (int i=0; i < cur->run_storage.size()-1; i++){
+            std::cout << cur->run_storage[i].get_file_location();
+        } 
+        std::cout << cur->run_storage[cur->run_storage.size()-1].get_file_location()<<std::endl;
+    }
+}
+
 void LSM_Tree::create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec){
         for (int i = 0; i < vec.size(); i++){
             bloom->set(vec[i].key);
@@ -229,26 +242,21 @@ void LSM_Tree::level_meta_save(){
     // storing each of the secondary storage related data in different files. 
     // bloom and fence pointer binary size are stored as txt in the meta data file. easier to load data on boot. 
     std::string meta_data = "lsm_tree_level_meta.txt";
-    std::string fence_data = "lsm_tree_fence.dat";
-    std::string bloom_data = "lsm_tree_bloom.dat";
-
     std::ofstream meta(meta_data);
-    std::ofstream fence(fence_data, std::ios::binary);
-    std::ofstream bloom(bloom_data, std::ios::binary);
 
-    if (!meta.is_open() || !fence.is_open() || !bloom.is_open()) {
+    if (!meta.is_open()) {
         std::cerr << "Failed to open the files." << std::endl;
     }
 
     Level_Node* cur = root; 
 
     // write meta data to the LSM tree first. 
-    meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size  << " "  << mode << " "; 
+    meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size  << " "  << mode << "\n"; 
 
     while(cur){
         std::cout << cur->level <<": "; 
         // for each level: write current level, level limit, run count, then specific data for each run. 
-        meta << cur->level << " " << cur->max_num_of_runs << " " << cur->run_storage.size() << " ";
+        meta << cur->level << " " << cur->max_num_of_runs << " " << cur->run_storage.size() << "\n";
 
         // for each run: write filename, bloom size and fence size. 
         for (int i = 0; i < cur->run_storage.size(); i++){
@@ -257,44 +265,29 @@ void LSM_Tree::level_meta_save(){
             // write bloom filter to binary file. TODO: debug this. maybe the spacing of things could be wrong. 
             BloomFilter temp_bloom = cur->run_storage[i].return_bloom(); 
             boost::dynamic_bitset<> temp_bitarray = temp_bloom.return_bitarray();
-
-            bloom.write(reinterpret_cast<const char*>(&temp_bitarray), sizeof(temp_bitarray));
-            // check number of bits wrote. 
-            std::streampos bloom_size = bloom.tellp();// need to be sure this is actually correct. 
-
-            if (bloom_size != -1) { // tellp() returns -1 on failure
-                std::cout << "Number of bytes written: " << bloom_size << std::endl;
-            } else {
-                std::cerr << "Error occurred while writing to the file." << std::endl;
-            }
+            
+            std::string bloom_filename = "bloom_" + cur->run_storage[i].get_file_location();
+            std::ofstream bloom(bloom_filename);
+            bloom << temp_bitarray; // Write the bitset to the file
+            bloom.close();
 
             // Write fence pointers to binary file
             std::vector<KEY_t> temp_fence = cur->run_storage[i].return_fence(); 
-
-            fence.write(reinterpret_cast<const char*>(temp_fence.data()), temp_fence.size() * sizeof(KEY_t));
-
-            std::streampos fence_size = bloom.tellp();// need to be sure this is actually correct. Don't think this quite works. 
-
-            if (fence_size != -1) { // tellp() returns -1 on failure
-                std::cout << "Number of bytes written: " << fence_size << std::endl;
-            } else {
-                std::cerr << "Error occurred while writing to the file." << std::endl;
-            }
-
-            // update meta headers on these data. 
-            std::string bloomStr = std::to_string(static_cast<std::streamoff>(bloom_size));
-            std::string fenceStr = std::to_string(static_cast<std::streamoff>(fence_size));
-
-            meta << cur->run_storage[i].get_file_location() << " " << bloomStr << " " << fenceStr << " ";
+            
+            std::string fence_filename = "fence_" + cur->run_storage[i].get_file_location();
+            std::ofstream fence(fence_filename);
+            fence.write(reinterpret_cast<const char*>(&temp_fence[0]), temp_fence.size() * sizeof(KEY_t));
+            fence.close();
+            
+            meta << cur->run_storage[i].get_file_location() << std::endl;
         }
 
-        std::cout << "----------------------------" << std::endl;
+        std::cout << "\n----------------------------" << std::endl;
         cur = cur->next_level;
     }
 
     meta.close(); 
-    fence.close(); 
-    bloom.close();
+
 }
 
 

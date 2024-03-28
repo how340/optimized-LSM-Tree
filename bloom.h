@@ -21,6 +21,8 @@ public:
     // constructor
     BloomFilter(long length) : bitarray(length) {}
 
+    BloomFilter(boost::dynamic_bitset<> input_bitarray): bitarray(input_bitarray) {}
+
     // set bit in bitarray
     void set(KEY_t);
 

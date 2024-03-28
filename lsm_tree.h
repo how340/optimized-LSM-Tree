@@ -46,6 +46,12 @@ class LSM_Tree{
     int mode; // determine whether we run the baseline LSM implementation or optimized version. 
                 // 0 means optimized version, 1 is un-optimized
 
+    
+
+public: 
+    LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode);
+    ~LSM_Tree();
+
     struct Level_node{
         size_t level; 
         size_t max_num_of_runs;
@@ -57,11 +63,9 @@ class LSM_Tree{
         : level(lvl), max_num_of_runs(numRuns), next_level(nextLvl)  {};
     };
 
-    typedef struct Level_node Level_Node;
+    typedef struct Level_node Level_Node; 
 
-public: 
-    LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode);
-    ~LSM_Tree();
+
     Level_Node* root; 
     
     void put(KEY_t key, VALUE_t val);
@@ -77,10 +81,10 @@ public:
     void level_meta_save();
     void exit_save();
 
-    // reconstructing file structure on load
-    void load_run(Run run);// load a 
-    void generate_level();//create a new level
-    void load_memory();//load memory content from a file. 
+    //helper functions
+    void print(); 
+
+
 };
 
 #endif 
