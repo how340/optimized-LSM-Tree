@@ -21,12 +21,16 @@ typedef int32_t VALUE_t;
 struct Entry {
     KEY_t key;
     VALUE_t val;
+    bool del;
 
     bool operator==(const Entry& other) const {return key == other.key;}
     bool operator<(const Entry& other) const {return key < other.key;}
     bool operator>(const Entry& other) const {return key > other.key;}
-};
 
+    // //Default constructor
+    // Entry(KEY_t key, VALUE_t val, bool del = false) 
+    //     : key(key), val(val), del(del)  {};
+}; 
 typedef struct Entry Entry_t;
 
 #endif

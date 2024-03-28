@@ -28,7 +28,7 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
         Level_Node* cur = root; 
 
          // Insert a new run into storage. 
-        std::vector<Entry_t> buffer = in_mem->convert_tree_to_vector(); // temp buffer for merging.
+        std::vector<Entry_t> buffer = in_mem->return_store(); // temp buffer for merging.
 
         // TODO: at some point, the size of all of the files will exceed the memory. Also, we might need to allow different merge policies. 
         // two main ways of doing this, either do external sorting, or do the partial compaction with the following level. 
@@ -217,7 +217,7 @@ void LSM_Tree::save_to_memory(std::string filename,  std::vector<KEY_t>* fence_p
 void LSM_Tree::exit_save_memory(){
     int memory_cnt = 0;
     std::string filename = "lsm_tree_memory.dat";
-    std::vector<Entry_t> buffer = in_mem->convert_tree_to_vector();
+    std::vector<Entry_t> buffer = in_mem->return_store();
 
     std::ofstream out(filename, std::ios::binary);
 

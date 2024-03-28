@@ -34,7 +34,7 @@ void command_loop(LSM_Tree* tree) {
         }
         
         switch (command) {
-            case 'p': {
+            case 'p': {//put
                 std::cin >> key_a >> val;
                 if (val < MIN_VAL || val > MAX_VAL) {
                     die("Could not insert value " + std::to_string(val) + ": out of range.");
@@ -43,7 +43,7 @@ void command_loop(LSM_Tree* tree) {
                 }
                 break;
             }
-            case 'g': {
+            case 'g': {//get
                 std::cin >> key_a;
                 
                 auto timer_s = std::chrono::high_resolution_clock::now();
@@ -58,7 +58,14 @@ void command_loop(LSM_Tree* tree) {
 
                 break;
             }
-            case 'o': {
+            case 'r': {//range 
+                tree->print();
+            }
+            case 'd': {//delete
+                tree->print();
+            }
+            //TODO: add the load operator. 
+            case 'o': {//print current LSM tree view
                 tree->print();
             }
             default:
