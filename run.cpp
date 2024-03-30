@@ -44,14 +44,12 @@ int Run::search_fence(KEY_t key){
 
 
 // read certain bytes from the binary file storages. 
-// Make sure this approach doesn't cause memory leak. As long as the return variable can go out of scope, this wil be safe. 
-// TODO: consider the case where the node could be delete flag, will need to go in to check. 
 std::unique_ptr<Entry_t> Run::disk_search(int starting_point, size_t bytes_to_read, KEY_t key) {
     //std::lock_guard<std::mutex> guard(Run_mutex);
 
     auto entry = std::make_unique<Entry_t>();
 
-    size_t read_size = bytes_to_read; 
+    size_t read_size = LOAD_MEMORY_PAGE_SIZE; 
 
     std::ifstream file(file_location, std::ios::binary);
 
@@ -60,7 +58,7 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point, size_t bytes_to_re
     }
 
     // shift file stream pointer to starting_point base on fence pointer result. 
-    file.seekg(starting_point * 512, std::ios::beg);// *512 cuz 512 bytes per page. 
+    file.seekg(starting_point * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
 
     while(read_size > 0){
         file.read(reinterpret_cast<char*>(&entry->key), sizeof(entry->key));
@@ -77,6 +75,11 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point, size_t bytes_to_re
     return nullptr;// return null if we couldn't find the result. 
 }
 
+std::vector<Entry_t> Run::range_disk_search()
+{
+    return std::vector<Entry_t>();
+}
+
 std::vector<KEY_t> Run::return_fence()
 {
     return *fence_pointers;
@@ -86,30 +89,3 @@ BloomFilter Run::return_bloom()
 {
     return *bloom;
 }
-
-// TODO: Might just come back to this later. Probably not needed for midway check. 
-// std::vector<Entry_t> Run::range_disk_search(KEY_t left, KEY_t right){
-//     std::vector<Entry_t> search_result; 
-
-//     int left_post = -1;
-//     int right_post = -1;
-
-//     if(Run::search_bloom(left)){
-//         left_post = Run::search_fence(left);
-//     }
-//     if(Run::search_bloom(right)){
-//         right_post = Run::search_fence(right);
-//     }
-
-//     if(left_post == -1 && right_post == -1){// no value in the disk.
-//         return search_result;
-//     }else if (left_post == -1){
-//         left_post = 0;
-//     }else if (right_post == -1){
-//         right_post = fence->size() - 1;
-//     }
-
-//     // search through the valid pages for here. 
-
-//     return search_result;
-// }

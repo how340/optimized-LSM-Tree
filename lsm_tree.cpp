@@ -14,29 +14,38 @@ LSM_Tree::~LSM_Tree()
                    // Consider implementing or calling a method here to clean up other dynamically allocated resources, if any
                    // probably want to delete the tree structure from root recursively.
 }
-
-// TODO: Add overwrite and merge that should occur as part of merge policy.
+/**
+ * LSM_Tree
+ *
+ * @param  {KEY_t} key   :
+ * @param  {VALUE_t} val :
+ */
 void LSM_Tree::put(KEY_t key, VALUE_t val)
 {
     int insert_result;
     std::vector<Entry_t> buffer;
-    Level_Node* cur = root; 
+    Level_Node *cur = root;
 
     insert_result = in_mem->insert(key, val);
 
     if (insert_result == -1)
-    { 
+    {
         buffer = LSM_Tree::merge(cur);
-        Run merged_run = create_run(buffer); 
+        Run merged_run = create_run(buffer);
         cur->run_storage.push_back(merged_run);
-    }
 
-    // clear buffer and insert again.
-    in_mem->clear_buffer();
-    in_mem->insert(key, val);
+        // clear buffer and insert again.
+        in_mem->clear_buffer();
+        in_mem->insert(key, val);
+    }
 }
 
-// These were originally from the buffer class. I should move them here. This makes more sense here.
+/**
+ * LSM_Tree
+ *
+ * @param  {KEY_t} key                 :
+ * @return {std::unique_ptr<Entry_t>}  :
+ */
 std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
 {
 
@@ -44,9 +53,10 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
 
     if (in_mem_result)
     { // check memory buffer first.
-        if (in_mem_result->del){
-            std::cout << "not found (as a result of deleted)" << std::endl; 
-            return nullptr; 
+        if (in_mem_result->del)
+        {
+            std::cout << "not found (as a result of deleted)" << std::endl;
+            return nullptr;
         }
         std::cout << "found in memory" << in_mem_result->val << std::endl;
         return in_mem_result;
@@ -55,71 +65,126 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
     {
         // search in secondary storage.
         std::unique_ptr<Entry_t> entry = nullptr;
-        Level_Node* cur = root; 
+        Level_Node *cur = root;
 
         while (cur)
         {
             std::cout << "searching_level: " << cur->level << std::endl;
 
-            // start search from the back of the run storage. The latest run contains the most updated data. 
-            for(auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
+            // start search from the back of the run storage. The latest run contains the most updated data.
+            for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
             {
                 if (rit->search_bloom(key))
                 {
                     int starting_point = rit->search_fence(key);
 
                     if (starting_point != -1)
-                    {
-                        entry = rit->disk_search(starting_point, MEMORY_PAGE_SIZE, key);
+                    { // TODO: The file sizing here needs to be delicate.
+                        entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
                         if (entry)
                         {
-                            if (entry->del){
-                                std::cout << "not found (as a result of deleted)" << std::endl; 
-                                return nullptr; 
+                            if (entry->del)
+                            {
+                                std::cout << "not found (as a result of deleted)" << std::endl;
+                                return nullptr;
                             }
-                            std::cout << " " <<entry->val << ", ";
+                            std::cout << " " << entry->val << ", ";
                             return entry;
                         }
                     }
                 }
             }
-            cur = cur->next_level; 
+            cur = cur->next_level;
         }
     }
     std::cout << "not found" << std::endl;
     return nullptr;
 }
 
+/**
+ * LSM_Tree
+ *
+ * @param  {KEY_t} lower           :
+ * @param  {KEY_t} upper           :
+ * @return {std::vector<Entry_t>}  :
+ */
 std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
 {
-    return std::vector<Entry_t>();
+    std::vector<Entry_t> ret;
+    ret = in_mem->get_range(lower, upper);
+
+    if (ret.size() == 0)
+    { // no such range in buffer
+        std::unordered_map<KEY_t, VALUE_t> hash_mp;
+        Level_Node *cur = root;
+
+        while (cur)
+        {
+            std::cout << "searching_level: " << cur->level << std::endl;
+
+            // start search from the back of the run storage. The latest run contains the most updated data.
+            for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
+            {
+                int starting_point = rit->search_fence(lower);
+                int ending_point = rit->search_fence(upper);
+
+                if (starting_point && ending_point)
+                {
+                    // TODO: add range file look up algorithm. Update delete flag first.
+                }
+                else if (starting_point)
+                {
+                }
+                else if (ending_point)
+                {
+                }
+                else
+                {
+                    // not on this run. Can delete this bracket later.
+                }
+            }
+            cur = cur->next_level;
+        }
+    }
+
+    return ret;
 }
 
+/**
+ * LSM_Tree
+ *
+ * @param  {KEY_t} key :
+ */
 void LSM_Tree::del(KEY_t key)
 {
     int del_result;
     std::vector<Entry_t> buffer;
-    Level_Node* cur = root; 
+    Level_Node *cur = root;
 
     del_result = in_mem->del(key);
 
-    if (del_result == -1)// buffer is full. 
-    { 
+    if (del_result == -1) // buffer is full.
+    {
         buffer = LSM_Tree::merge(cur);
         Run merged_run = create_run(buffer);
         cur->run_storage.push_back(merged_run);
+        // clear buffer and del again.
+        in_mem->clear_buffer();
+        in_mem->del(key);
     }
-
-    // clear buffer and del again.
-    in_mem->clear_buffer();
-    in_mem->del(key);
 }
-    
+
 
 // merge policy for combining different
-std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node* cur)
-{   
-    std::cout << "merging" << std::endl; 
+/**
+ * LSM_Tree
+ *
+ * @param  {LSM_Tree::Level_Node*} cur :
+ * @return {std::vector<Entry_t>}      :
+ */
+std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *cur)
+{
+    std::cout << "merging" << std::endl;
     // Insert a new run into storage.
     std::vector<Entry_t> buffer = in_mem->flush_buffer(); // temp buffer for merging.
 
@@ -179,10 +244,10 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node* cur)
     {
         ret.push_back(Entry_t{pair.first, pair.second, false});
     }
-    
+
     std::sort(ret.begin(), ret.end());
 
-    // TODO: I think I should pass by reference here. This buffer could be pretty big. 
+    // TODO: I think I should pass by reference here. This buffer could be pretty big.
     return ret;
 }
 
@@ -197,19 +262,19 @@ void LSM_Tree::exit_save()
     level_meta_save();
 }
 
-// create a Run and associated file for a given vector of entries. 
+// create a Run and associated file for a given vector of entries.
 Run LSM_Tree::create_run(std::vector<Entry_t> buffer)
 {
     // create new bloom, new fence pointer, create new run in next level.
     std::string file_name = generateRandomString(6);
 
-    BloomFilter* bloom = new BloomFilter(bloom_bits_per_entry * buffer.size());
+    BloomFilter *bloom = new BloomFilter(bloom_bits_per_entry * buffer.size());
     std::vector<KEY_t> *fence = new std::vector<KEY_t>;
 
     LSM_Tree::create_bloom_filter(bloom, buffer);
     LSM_Tree::save_to_memory(file_name, fence, buffer);
-    
-    Run run(file_name, bloom, fence); 
+
+    Run run(file_name, bloom, fence);
     return run;
 }
 
@@ -221,19 +286,22 @@ void LSM_Tree::create_bloom_filter(BloomFilter *bloom, const std::vector<Entry_t
     }
 };
 
-
 /**
  * save_to_memory
- * The function stores an vector containing entries into a binary and modify the fence pointers for the page. 
- * 
- * @param  {std::string} filename              : The file_location for the stored binary file. 
+ * The function stores an vector containing entries into a binary and modify the fence pointers for the page.
+ *
+ * Special attention: The deletion status of each key/value pairs are packed into the first few bits
+ * of the page. Current, each page is 512 bytes and can hold 64 key/val pairs. To allow for the deletion feature.
+ * I am adding anthoer 64 bits(8 bytes of data) into the end of a memory page, making each actual memory page to be
+ * 520 bytes.
+ * @param  {std::string} filename              : The file_location for the stored binary file.
  * @param  {std::vector<KEY_t>*} fence_pointer : Pointer to a vector containing the fence pointers
- * @param  {std::vector<Entry_t>} vec          : a vector containing entries. 
+ * @param  {std::vector<Entry_t>} vec          : a vector containing entries.
  */
-// TODO: need to accomodate this to add an additional deletion bit. 
 void LSM_Tree::save_to_memory(std::string filename, std::vector<KEY_t> *fence_pointer, std::vector<Entry_t> &vec)
 {
     // two pointers to keep track of memory and fence_pointer traversal.
+    std::vector<int> bool_bits;
     int memory_cnt = 0, fence_pointer_index = 0;
     std::ofstream out(filename, std::ios::binary);
 
@@ -242,31 +310,79 @@ void LSM_Tree::save_to_memory(std::string filename, std::vector<KEY_t> *fence_po
         throw std::runtime_error("Unable to open file for writing");
     }
 
-    for (const auto &entries : vec)
+    for (const auto &entry : vec)
     { // go through all entries.
+        bool_bits.push_back(entry.del);
+
         if (memory_cnt == 0)
         {
-            fence_pointer->push_back(entries.key);
+            fence_pointer->push_back(entry.key);
             fence_pointer_index++;
         }
-        out.write(reinterpret_cast<const char *>(&entries.key), sizeof(entries.key));
-        out.write(reinterpret_cast<const char *>(&entries.val), sizeof(entries.val));
+        out.write(reinterpret_cast<const char *>(&entry.key), sizeof(entry.key));
+        out.write(reinterpret_cast<const char *>(&entry.val), sizeof(entry.val));
 
-        memory_cnt = sizeof(entries.key) + sizeof(entries.val) + memory_cnt;
+        memory_cnt = sizeof(entry.key) + sizeof(entry.val) + memory_cnt;
 
-        if (memory_cnt == MEMORY_PAGE_SIZE)
-            memory_cnt = 0; // reached page maximum
+        // reached page maximum. Append the bool_bits to the back of the page.
+        if (memory_cnt == SAVE_MEMORY_PAGE_SIZE)
+        {
+            memory_cnt = 0;
+            uint64_t result = 0;
+
+            if (bool_bits.size() != 64)
+            {
+                throw std::runtime_error("Vector must contain exactly 64 elements.");
+            }
+
+            for (size_t i = 0; i < 64; ++i)
+            {
+                if (bool_bits[i] != 0 && bool_bits[i] != 1)
+                {
+                    throw std::runtime_error("Vector must contain only 0s and 1s.");
+                }
+                // Shift the bit to the correct position and set it in 'result'
+                result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+            }
+            out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+            bool_bits.clear();
+        }
     }
-    // Lazy approach right now, the last fence pointer is just the maximum key for now.
+
     fence_pointer->push_back(vec.back().key);
+    // end of file is not a full page. Pad the bits to full length and add to end of file.
+    if (bool_bits.size() > 0)
+    {
+        while (bool_bits.size() < 64)
+        {
+            bool_bits.push_back(0); // pad with zeros
+        }
+        uint64_t result = 0;
+        for (size_t i = 0; i < 64; ++i)
+        {
+            if (bool_bits[i] != 0 && bool_bits[i] != 1)
+            {
+                throw std::runtime_error("Vector must contain only 0s and 1s.");
+            }
+            // Shift the bit to the correct position and set it in 'result'
+            result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+        }
+        out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+        bool_bits.clear();
+    }
 
     out.close();
     // std::cout << "Successfully written to file : " << filename << std::endl;
 }
 
-// exit save memory function
+/**
+ * LSM_Tree
+ *
+ * TODO: There is pretty big overlap between exit_save_memory() and save_memory(). Explore simplification. 
+ */
 void LSM_Tree::exit_save_memory()
 {
+    std::vector<int> bool_bits;
     int memory_cnt = 0;
     std::string filename = "lsm_tree_memory.dat";
     std::vector<Entry_t> buffer = in_mem->flush_buffer();
@@ -278,15 +394,54 @@ void LSM_Tree::exit_save_memory()
         throw std::runtime_error("Unable to open file for writing");
     }
 
-    for (const auto &entries : buffer)
+    for (const auto &entry : buffer)
     { // go through all entries.
-        out.write(reinterpret_cast<const char *>(&entries.key), sizeof(entries.key));
-        out.write(reinterpret_cast<const char *>(&entries.val), sizeof(entries.val));
+        out.write(reinterpret_cast<const char *>(&entry.key), sizeof(entry.key));
+        out.write(reinterpret_cast<const char *>(&entry.val), sizeof(entry.val));
 
-        memory_cnt = sizeof(entries.key) + sizeof(entries.val) + memory_cnt;
+        memory_cnt = sizeof(entry.key) + sizeof(entry.val) + memory_cnt;
 
-        if (memory_cnt == MEMORY_PAGE_SIZE)
-            memory_cnt = 0; // reached page maximum
+        if (memory_cnt == SAVE_MEMORY_PAGE_SIZE)
+        {
+            memory_cnt = 0;
+            uint64_t result = 0;
+
+            if (bool_bits.size() != 64)
+            {
+                throw std::runtime_error("Vector must contain exactly 64 elements.");
+            }
+
+            for (size_t i = 0; i < 64; ++i)
+            {
+                if (bool_bits[i] != 0 && bool_bits[i] != 1)
+                {
+                    throw std::runtime_error("Vector must contain only 0s and 1s.");
+                }
+                // Shift the bit to the correct position and set it in 'result'
+                result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+            }
+            out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+        }
+    }
+
+    if (bool_bits.size() > 0)
+    {
+        while (bool_bits.size() < 64)
+        {
+            bool_bits.push_back(0); // pad with zeros
+        }
+        uint64_t result = 0;
+        for (size_t i = 0; i < 64; ++i)
+        {
+            if (bool_bits[i] != 0 && bool_bits[i] != 1)
+            {
+                throw std::runtime_error("Vector must contain only 0s and 1s.");
+            }
+            // Shift the bit to the correct position and set it in 'result'
+            result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+        }
+        out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+        bool_bits.clear();
     }
 
     out.close();

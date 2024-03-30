@@ -8,6 +8,7 @@
 #include <chrono>
 #include <algorithm>
 #include <filesystem>
+#include <unordered_map>
 
 #include "buffer_level.h"
 #include "key_value.h"
@@ -42,7 +43,7 @@ class LSM_Tree{
     BufferLevel* in_mem;//Think about destructor here. 
     int bloom_bits_per_entry; 
     int level_ratio;
-    const int MEMORY_PAGE_SIZE = 512;
+    // const int SAVE_MEMORY_PAGE_SIZE = 512;
     int mode; // determine whether we run the baseline LSM implementation or optimized version. 
                 // 0 means optimized version, 1 is un-optimized
 

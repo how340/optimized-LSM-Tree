@@ -155,7 +155,6 @@ LSM_Tree* meta_load_save(){
             fence.close(); 
             bloom.close();
         }
-        
     }
     std::cout << "no more lines" << std::endl;
     meta.close(); 
@@ -163,10 +162,6 @@ LSM_Tree* meta_load_save(){
 
     return lsm_tree;
 };
-
-
-
-
 
 int main(int argc, char *argv[]){
     int opt; 
@@ -181,9 +176,7 @@ int main(int argc, char *argv[]){
     //     std::cout << "No command-line arguments provided." << std::endl;
     // }
 
-
     // std::cout << "\n basic LSM tree benchmark \n" << std::endl;
-
     std::string meta_data_path = "lsm_tree_level_meta.txt";
     std::string memory_data_path = "lsm_tree_memory.dat";
 
@@ -194,7 +187,7 @@ int main(int argc, char *argv[]){
         lsm_tree = meta_load_save();
     } else {
         std::cout << "Some data storage files are missing. Database will overwrite all past data." << std::endl;
-        lsm_tree = new LSM_Tree(10, 3, 100000, 1); // 1 mil integer buffer size
+        lsm_tree = new LSM_Tree(10, 3, 3, 1); // 1 mil integer buffer size. MAKING THIS # for testing haha. 
     }
 
     std::cout << "ready for using LSM tree" << std::endl; 
@@ -211,7 +204,6 @@ int main(int argc, char *argv[]){
     
     // Output the duration TODO: there is bug in searching. This was giving search errors. 
     // std::cout << lsm_tree.get(search_key)->val<< std::endl;
-
 
     // Output the duration
     std::cout << "Program executed in " << duration.count() << " milliseconds." << std::endl;

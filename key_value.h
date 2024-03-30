@@ -17,6 +17,8 @@ typedef int32_t VALUE_t;
 #define MIN_VAL -2147483647
 #define TOMBSTONE_VAL -2147483648
 
+const int SAVE_MEMORY_PAGE_SIZE = 512;
+
 // basic int32 key/value pair data structure.
 struct Entry {
     KEY_t key;
