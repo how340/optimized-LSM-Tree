@@ -59,17 +59,24 @@ void command_loop(LSM_Tree* tree) {
                 break;
             }
             case 'r': {//range 
-                tree->print();
+                std::cin >> key_a >> key_b;
+                // TODO: add check to make sure key_a is less than key_b. 
+                tree->range(key_a, key_b);
+                break; 
             }
             case 'd': {//delete
-                tree->print();
+                std::cin >> key_a;
+                tree->del(key_a);
+                break; 
             }
             //TODO: add the load operator. 
-            case 'o': {//print current LSM tree view
+            case 'x': {//print current LSM tree view
                 tree->print();
+                break; 
             }
             default:
                 die("Invalid command.");
+                break;
         }
     }
 }

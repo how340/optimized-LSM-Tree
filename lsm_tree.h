@@ -65,14 +65,16 @@ public:
 
     typedef struct Level_node Level_Node; 
 
-
     Level_Node* root; 
     
     void put(KEY_t key, VALUE_t val);
     std::unique_ptr<Entry_t> get(KEY_t key);
+    std::vector<Entry_t> range(KEY_t lower, KEY_t upper);
+    void del(KEY_t key);
+    std::vector<Entry_t> merge(Level_Node* cur);
     
-    std::string generateRandomString(size_t length);
-    
+
+    Run create_run(std::vector<Entry_t>);
     void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec);
     void save_to_memory(std::string filename,  std::vector<KEY_t>* fence_pointer, std::vector<Entry_t>& vec);
 
@@ -83,6 +85,7 @@ public:
 
     //helper functions
     void print(); 
+    std::string generateRandomString(size_t length);
 
 
 };
