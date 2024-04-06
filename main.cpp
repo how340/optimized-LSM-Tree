@@ -156,7 +156,7 @@ LSM_Tree* meta_load_save(){
             bloom.close();
         }
     }
-    std::cout << "no more lines" << std::endl;
+    std::cout << "meta load complete!" << std::endl;
     meta.close(); 
     memory.close();
 
@@ -187,10 +187,13 @@ int main(int argc, char *argv[]){
         lsm_tree = meta_load_save();
     } else {
         std::cout << "Some data storage files are missing. Database will overwrite all past data." << std::endl;
-        lsm_tree = new LSM_Tree(10, 3, 3, 1); // 1 mil integer buffer size. MAKING THIS # for testing haha. 
+        lsm_tree = new LSM_Tree(10, 3, 100000, 1); // 1 mil integer buffer size. MAKING THIS # for testing haha. 
     }
 
-    std::cout << "ready for using LSM tree" << std::endl; 
+    /* 
+        Testing without command loop. 
+    */
+
     // start time
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -202,9 +205,6 @@ int main(int argc, char *argv[]){
     // Calculate the duration in milliseconds
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     
-    // Output the duration TODO: there is bug in searching. This was giving search errors. 
-    // std::cout << lsm_tree.get(search_key)->val<< std::endl;
-
     // Output the duration
     std::cout << "Program executed in " << duration.count() << " milliseconds." << std::endl;
 
