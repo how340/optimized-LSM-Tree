@@ -70,25 +70,29 @@ class BufferLevel {
 
   // Get a range of values stored in the tree.
   std::vector<Entry_t> get_range(KEY_t lower, KEY_t upper) {
-    std::unordered_map<KEY_t, VALUE_t> hash_mp;
+    std::unordered_map<KEY_t, Entry_t> hash_mp;
     std::vector<Entry_t> ret;
 
     for (int i = 0; i < store.size(); i++) {
       Entry_t temp_entry = store[i];
       if (temp_entry.key >= lower && temp_entry.key <= upper) {
-        if (temp_entry.del)  // TODO: reconsider what happens if deleted value
-                             // exists. might need to copy changes from merge
-                             // and flush buffer.
-        {
-          hash_mp.erase(temp_entry.key);
-        } else {
-          hash_mp[temp_entry.key] = temp_entry.val;
+        if (temp_entry.del) {
+          // delete item exists on same level, remove the item.
+          if (hash_mp.find(temp_entry.key) != hash_mp.end()) {
+            hash_mp.erase(temp_entry.key);
+          } else {  // delete item not exists on same level. proprogate.
+            hash_mp[temp_entry.key] = temp_entry;
+          }
+        } else {  // this operation will always use a later key/val to update
+                  // output value.
+          hash_mp[temp_entry.key] = temp_entry;
         }
       }
     }
     for (const auto &pair : hash_mp) {
-      ret.push_back(Entry_t{pair.first, pair.second, false});
+      ret.push_back(pair.second);
     }
+    
     return ret;
   }
 
@@ -135,6 +139,5 @@ class BufferLevel {
     return ret;
   }
 };
-
 
 #endif

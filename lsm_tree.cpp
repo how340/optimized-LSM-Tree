@@ -72,9 +72,7 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
         if (rit->search_bloom(key)) {
           int starting_point = rit->search_fence(key);
           std::cout << "starting at: " << starting_point << std::endl;
-          if (starting_point !=
-              -1) {  // TODO: The file sizing here needs to be delicate. Also
-                     // need to consider the effect on the last page in a file.
+          if (starting_point != -1) {
             entry =
                 rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
             if (entry) {
@@ -97,44 +95,67 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
 
 /**
  * LSM_Tree
- *
+ *  do range from top to bottom, and back to front. Keep a linked list of the results for later traverse. 
+ * After searching in each run, create a vector of all values
+ * within range. When consolidating the ranges, keep a hashmap, and go from top to bottom. 
  * @param  {KEY_t} lower           :
  * @param  {KEY_t} upper           :
  * @return {std::vector<Entry_t>}  :
  */
 std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
-  std::vector<Entry_t> ret;
-  ret = in_mem->get_range(lower, upper);
+  // Linked list to keep track of search results.
+  struct Node {
+    std::vector<Entry_t> data;
+    Node *next = nullptr;
+  };
 
-  if (ret.size() == 0) {  // no such range in buffer
-    std::unordered_map<KEY_t, VALUE_t> hash_mp;
-    Level_Node *cur = root;
+  Node *ret_root = new Node;
+  std::vector<Entry_t> ret;  // returned vector
 
-    while (cur) {
-      std::cout << "searching_level: " << cur->level << std::endl;
+  ret_root->data = in_mem->get_range(lower, upper);
+  ret_root->next = new Node;
+  Node *ret_cur = ret_root;
 
-      // start search from the back of the run storage. The latest run contains
-      // the most updated data.
-      for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend();
-           ++rit) {
-        int starting_point = rit->search_fence(lower);
-        int ending_point = rit->search_fence(upper);
+  Level_Node *cur = root;
 
-        if (starting_point && ending_point) {
-          // TODO: add range file look up algorithm. Update delete flag first.
-        } else if (starting_point) {
-        } else if (ending_point) {
-        } else {
-          // not on this run. Can delete this bracket later.
-        }
-      }
-      cur = cur->next_level;
+  while (cur) {
+    // iterate each level from back to front.
+    for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend();
+         ++rit) {
+      std::cout << "reading level: " << cur->level << std::endl; 
+      ret_cur = ret_cur->next;
+      ret_cur->data = rit->range_disk_search(lower, upper);
     }
+    cur = cur->next_level; 
+  }
+  std::unordered_map<KEY_t, Entry_t> hash_mp;
+  ret_cur = ret_root;  // reset current pointer;
+
+  while (ret_cur) {
+    for (Entry_t entry : ret_cur->data) {
+      // Only update if we have not seen this key
+      //  any repeating key down the tree are older values.
+      if (hash_mp.find(entry.key) == hash_mp.end()) {
+        hash_mp[entry.key] = entry;
+      }
+    }
+    ret_cur = ret_cur->next;
+  }
+  for (const auto &pair : hash_mp) {
+    ret.push_back(pair.second);
   }
 
+  // need to delete the content of the linked list.
+  ret_cur = ret_root; 
+  while(ret_cur){
+    Node* tmp = ret_cur;
+    ret_cur = ret_cur->next; 
+    delete tmp; 
+  }
+
+  std::cout << "Range search is complete" << std::endl; 
   return ret;
 }
-
 /**
  * LSM_Tree
  *
@@ -313,8 +334,7 @@ void LSM_Tree::save_to_memory(std::string filename,
       if (bool_bits.size() != 64) {
         throw std::runtime_error("Vector must contain exactly 64 elements.");
       }
-      std::for_each(bool_bits.begin(), bool_bits.end(),
-                    [](int element) { std::cout << element << " "; });
+
       for (size_t i = 0; i < 64; ++i) {
         if (bool_bits[i] != 0 && bool_bits[i] != 1) {
           throw std::runtime_error("Vector must contain only 0s and 1s.");
@@ -337,9 +357,6 @@ void LSM_Tree::save_to_memory(std::string filename,
       int padding = 0;
       bool_bits.push_back(padding);  // pad with zeros
     }
-
-    std::for_each(bool_bits.begin(), bool_bits.end(),
-                  [](int element) { std::cout << element << " "; });
 
     uint64_t result = 0;
     for (size_t i = 0; i < 64; ++i) {

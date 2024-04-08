@@ -24,10 +24,9 @@ public:
     bool search_bloom(KEY_t key);
     std::string get_file_location();
 
-    //search for single value
     std::unique_ptr<Entry_t> disk_search(int starting_point, size_t bytes_to_read, KEY_t key);
-    std::vector<Entry_t> range_disk_search();
-
+    std::vector<Entry_t> range_disk_search(KEY_t lower, KEY_t upper);
+    
     // return pointers to the underlying data structures
     std::vector<KEY_t> return_fence();
     BloomFilter return_bloom();
