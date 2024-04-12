@@ -32,6 +32,7 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
     if (insert_result == -1)
     {
         buffer = LSM_Tree::merge(cur);
+        std::cout << cur->level << std::endl; 
         Run merged_run = create_run(buffer);
         cur->run_storage.push_back(merged_run);
 
@@ -214,13 +215,13 @@ void LSM_Tree::del(KEY_t key)
  * @param  {LSM_Tree::Level_Node*} cur :
  * @return {std::vector<Entry_t>}      :
  */
-std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *cur)
+std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
 {
     std::cout << "merging" << std::endl;
     // Insert a new run into storage.
     std::vector<Entry_t> buffer = in_mem->flush_buffer(); // temp buffer for merging.
 
-    while (cur && cur->run_storage.size() == cur->max_num_of_runs)
+    while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1)
     {
         if (!cur->next_level)
         { // next level doesn't exist.
@@ -244,6 +245,7 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *cur)
         cur->run_storage.clear();
 
         cur = cur->next_level;
+        std::cout << cur->level << std::endl;
     }
 
     // resolve updates and deletes

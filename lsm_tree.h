@@ -58,7 +58,7 @@ class LSM_Tree {
   std::unique_ptr<Entry_t> get(KEY_t key);
   std::vector<Entry_t> range(KEY_t lower, KEY_t upper);
   void del(KEY_t key);
-  std::vector<Entry_t> merge(Level_Node* cur);
+  std::vector<Entry_t> merge(Level_Node* &cur);
 
   Run create_run(std::vector<Entry_t>);
   void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec);

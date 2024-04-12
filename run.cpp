@@ -132,7 +132,7 @@ std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper) {
             << ". On fence location: " << starting_left << "->"
             << starting_right << std::endl;
   if (starting_left == -1 && starting_right == -1) {
-    return ret;  // out of bound in this run.
+    return ret;  // out of bound in this run. actually there is another possibility. We can simply have the a wider range than the file. Need to further compare to see if they are both out of bounds. 
   } else if (starting_right == -1) {
     std::cout << "accessing left to end" << std::endl;
     for (int i = starting_left; i < fence_pointers->size(); i++) {
