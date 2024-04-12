@@ -1,21 +1,19 @@
 #include "lsm_tree.h"
 
-LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size,
-                   int mode)
-    : bloom_bits_per_entry(bits_ratio),
-      level_ratio(level_ratio),
-      buffer_size(buffer_size),
-      mode(mode) {
-  in_mem = new BufferLevel(buffer_size);
-  root = new Level_Node{0, level_ratio};
+LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode)
+    : bloom_bits_per_entry(bits_ratio), level_ratio(level_ratio), buffer_size(buffer_size), mode(mode)
+{
+    in_mem = new BufferLevel(buffer_size);
+    root = new Level_Node{0, level_ratio};
 }
 
-LSM_Tree::~LSM_Tree() {
-  // TODO: for sure there is memory leak. need to properly delete.
-  delete in_mem;  // Free the dynamically allocated in-memory buffer
-                  // Consider implementing or calling a method here to clean up
-                  // other dynamically allocated resources, if any probably want
-                  // to delete the tree structure from root recursively.
+LSM_Tree::~LSM_Tree()
+{
+    // TODO: for sure there is memory leak. need to properly delete.
+    delete in_mem; // Free the dynamically allocated in-memory buffer
+                   // Consider implementing or calling a method here to clean up
+                   // other dynamically allocated resources, if any probably want
+                   // to delete the tree structure from root recursively.
 }
 /**
  * LSM_Tree
@@ -23,23 +21,35 @@ LSM_Tree::~LSM_Tree() {
  * @param  {KEY_t} key   :
  * @param  {VALUE_t} val :
  */
-void LSM_Tree::put(KEY_t key, VALUE_t val) {
-  int insert_result;
-  std::vector<Entry_t> buffer;
-  Level_Node *cur = root;
+void LSM_Tree::put(KEY_t key, VALUE_t val)
+{
+    int insert_result;
+    std::vector<Entry_t> buffer;
+    Level_Node *cur = root;
 
-  insert_result = in_mem->insert(key, val);
+    insert_result = in_mem->insert(key, val);
 
-  if (insert_result == -1) {
-    buffer = LSM_Tree::merge(cur);
-    Run merged_run = create_run(buffer);
-    cur->run_storage.push_back(merged_run);
+    if (insert_result == -1)
+    {
+        buffer = LSM_Tree::merge(cur);
+        Run merged_run = create_run(buffer);
+        cur->run_storage.push_back(merged_run);
 
-    // clear buffer and insert again.
-    in_mem->clear_buffer();
-    in_mem->insert(key, val);
-  }
+        // clear buffer and insert again.
+        in_mem->clear_buffer();
+        in_mem->insert(key, val);
+    }
 }
+
+void LSM_Tree::put(Entry_t entry)
+{
+    int insert_result;
+    std::vector<Entry_t> buffer;
+    Level_Node *cur = root;
+
+    insert_result = in_mem->insert(entry);
+}
+
 
 /**
  * LSM_Tree
@@ -47,136 +57,154 @@ void LSM_Tree::put(KEY_t key, VALUE_t val) {
  * @param  {KEY_t} key                 :
  * @return {std::unique_ptr<Entry_t>}  :
  */
-std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
-  std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
+std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
+{
+    std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
 
-  if (in_mem_result) {  // check memory buffer first.
-    if (in_mem_result->del) {
-      std::cout << "not found (deleted)" << std::endl;
-      return nullptr;
-    }
-    std::cout << "found in memory: " << in_mem_result->val << std::endl;
-    return in_mem_result;
-  } else {
-    // search in secondary storage.
-    std::unique_ptr<Entry_t> entry = nullptr;
-    Level_Node *cur = root;
-
-    while (cur) {
-      std::cout << "searching_level: " << cur->level << std::endl;
-
-      // start search from the back of the run storage. The latest run contains
-      // the most updated data.
-      for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend();
-           ++rit) {
-        if (rit->search_bloom(key)) {
-          int starting_point = rit->search_fence(key);
-          std::cout << "starting at: " << starting_point << std::endl;
-          if (starting_point != -1) {
-            entry =
-                rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
-            if (entry) {
-              if (entry->del) {
-                std::cout << "not found (deleted)" << std::endl;
-                return nullptr;
-              }
-              std::cout << entry->val << std::endl;
-              return entry;
-            }
-          }
+    if (in_mem_result)
+    { // check memory buffer first.
+        if (in_mem_result->del)
+        {
+            std::cout << "not found (deleted)" << std::endl;
+            return nullptr;
         }
-      }
-      cur = cur->next_level;
+        std::cout << "found in memory: " << in_mem_result->val << std::endl;
+        return in_mem_result;
     }
-  }
-  std::cout << "not found" << std::endl;
-  return nullptr;
+    else
+    {
+        // search in secondary storage.
+        std::unique_ptr<Entry_t> entry = nullptr;
+        Level_Node *cur = root;
+
+        while (cur)
+        {
+            std::cout << "searching_level: " << cur->level << std::endl;
+
+            // start search from the back of the run storage. The latest run contains
+            // the most updated data.
+            for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
+            {
+                if (rit->search_bloom(key))
+                {
+                    int starting_point = rit->search_fence(key);
+                    std::cout << "starting at: " << starting_point << std::endl;
+                    if (starting_point != -1)
+                    {
+                        entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
+                        if (entry)
+                        {
+                            if (entry->del)
+                            {
+                                std::cout << "not found (deleted)" << std::endl;
+                                return nullptr;
+                            }
+                            std::cout << entry->val << std::endl;
+                            return entry;
+                        }
+                    }
+                }
+            }
+            cur = cur->next_level;
+        }
+    }
+    std::cout << "not found" << std::endl;
+    return nullptr;
 }
 
 /**
  * LSM_Tree
- *  do range from top to bottom, and back to front. Keep a linked list of the results for later traverse. 
+ *  do range from top to bottom, and back to front. Keep a linked list of the results for later traverse.
  * After searching in each run, create a vector of all values
- * within range. When consolidating the ranges, keep a hashmap, and go from top to bottom. 
+ * within range. When consolidating the ranges, keep a hashmap, and go from top to bottom.
  * @param  {KEY_t} lower           :
  * @param  {KEY_t} upper           :
  * @return {std::vector<Entry_t>}  :
  */
-std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
-  // Linked list to keep track of search results.
-  struct Node {
-    std::vector<Entry_t> data;
-    Node *next = nullptr;
-  };
+std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
+{
+    // Linked list to keep track of search results.
+    struct Node
+    {
+        std::vector<Entry_t> data;
+        Node *next = nullptr;
+    };
 
-  Node *ret_root = new Node;
-  std::vector<Entry_t> ret;  // returned vector
+    Node *ret_root = new Node;
+    std::vector<Entry_t> ret; // returned vector
 
-  ret_root->data = in_mem->get_range(lower, upper);
-  ret_root->next = new Node;
-  Node *ret_cur = ret_root;
+    ret_root->data = in_mem->get_range(lower, upper);
+    ret_root->next = new Node;
+    Node *ret_cur = ret_root;
 
-  Level_Node *cur = root;
+    Level_Node *cur = root;
 
-  while (cur) {
-    // iterate each level from back to front.
-    for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend();
-         ++rit) {
-      std::cout << "reading level: " << cur->level << std::endl; 
-      ret_cur = ret_cur->next;
-      ret_cur->data = rit->range_disk_search(lower, upper);
+    while (cur)
+    {
+        // iterate each level from back to front.
+        for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
+        {
+            std::cout << "reading level: " << cur->level << std::endl;
+            ret_cur = ret_cur->next;
+            ret_cur->data = rit->range_disk_search(lower, upper);
+        }
+        cur = cur->next_level;
     }
-    cur = cur->next_level; 
-  }
-  std::unordered_map<KEY_t, Entry_t> hash_mp;
-  ret_cur = ret_root;  // reset current pointer;
+    std::unordered_map<KEY_t, Entry_t> hash_mp;
+    ret_cur = ret_root; // reset current pointer;
 
-  while (ret_cur) {
-    for (Entry_t entry : ret_cur->data) {
-      // Only update if we have not seen this key
-      //  any repeating key down the tree are older values.
-      if (hash_mp.find(entry.key) == hash_mp.end()) {
-        hash_mp[entry.key] = entry;
-      }
+    while (ret_cur)
+    {
+        for (Entry_t entry : ret_cur->data)
+        {
+            // Only update if we have not seen this key
+            //  any repeating key down the tree are older values.
+            if (hash_mp.find(entry.key) == hash_mp.end())
+            {
+                hash_mp[entry.key] = entry;
+            }
+        }
+        ret_cur = ret_cur->next;
     }
-    ret_cur = ret_cur->next;
-  }
-  for (const auto &pair : hash_mp) {
-    ret.push_back(pair.second);
-  }
+    for (const auto &pair : hash_mp)
+    {
+        ret.push_back(pair.second);
+    }
 
-  // need to delete the content of the linked list.
-  ret_cur = ret_root; 
-  while(ret_cur){
-    Node* tmp = ret_cur;
-    ret_cur = ret_cur->next; 
-    delete tmp; 
-  }
+    // need to delete the content of the linked list.
+    ret_cur = ret_root;
+    while (ret_cur)
+    {
+        Node *tmp = ret_cur;
+        ret_cur = ret_cur->next;
+        delete tmp;
+    }
 
-  std::cout << "Range search is complete" << std::endl; 
-  return ret;
+    std::cout << "Range search is complete" << std::endl;
+    return ret;
 }
 /**
  * LSM_Tree
  *
  * @param  {KEY_t} key :
  */
-void LSM_Tree::del(KEY_t key) {
-  int del_result;
-  std::vector<Entry_t> buffer;
-  Level_Node *cur = root;
+void LSM_Tree::del(KEY_t key)
+{
+    int del_result;
+    std::vector<Entry_t> buffer;
+    Level_Node *cur = root;
 
-  del_result = in_mem->del(key);
+    del_result = in_mem->del(key);
 
-  if (del_result == -1)  // buffer is full.
-  {
-    buffer = LSM_Tree::merge(cur);
-    Run merged_run = create_run(buffer);
-    cur->run_storage.push_back(merged_run);
-    // clear buffer and del again.
-    in_mem->clear_buffer();
-    in_mem->del(key);
-  }
+    if (del_result == -1) // buffer is full.
+    {
+        buffer = LSM_Tree::merge(cur);
+        Run merged_run = create_run(buffer);
+        cur->run_storage.push_back(merged_run);
+        // clear buffer and del again.
+        in_mem->clear_buffer();
+        in_mem->del(key);
+    }
 }
 
 // merge policy for combining different
@@ -186,104 +214,110 @@ void LSM_Tree::del(KEY_t key) {
  * @param  {LSM_Tree::Level_Node*} cur :
  * @return {std::vector<Entry_t>}      :
  */
-std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *cur) {
-  std::cout << "merging" << std::endl;
-  // Insert a new run into storage.
-  std::vector<Entry_t> buffer =
-      in_mem->flush_buffer();  // temp buffer for merging.
+std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *cur)
+{
+    std::cout << "merging" << std::endl;
+    // Insert a new run into storage.
+    std::vector<Entry_t> buffer = in_mem->flush_buffer(); // temp buffer for merging.
 
-  while (cur && cur->run_storage.size() == cur->max_num_of_runs) {
-    if (!cur->next_level) {  // next level doesn't exist.
-      cur->next_level = new Level_Node(cur->level + 1, cur->max_num_of_runs);
+    while (cur && cur->run_storage.size() == cur->max_num_of_runs)
+    {
+        if (!cur->next_level)
+        { // next level doesn't exist.
+            cur->next_level = new Level_Node(cur->level + 1, cur->max_num_of_runs);
+        }
+
+        // naive full tiering merge policy.
+        for (int i = 0; i < cur->run_storage.size(); i++)
+        {
+            std::vector<Entry_t> temp_buffer;
+            temp_buffer = load_full_file(cur->run_storage[i].get_file_location(),cur->run_storage[i].return_fence());
+            buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
+        }
+
+        // delete current level info and files.
+        for (int i = 0; i < cur->run_storage.size(); i++)
+        {
+            std::filesystem::path fileToDelete(cur->run_storage[i].get_file_location());
+            std::filesystem::remove(fileToDelete);
+        }
+        cur->run_storage.clear();
+
+        cur = cur->next_level;
     }
 
-    // naive full tiering merge policy.
-    for (int i = 0; i < cur->run_storage.size(); i++) {
-      std::ifstream in(cur->run_storage[i].get_file_location(),
-                       std::ios::binary);
-      if (!in.is_open())
-        throw std::runtime_error("Unable to open file for writing");
+    // resolve updates and deletes
+    std::unordered_map<KEY_t, Entry_t> hash_mp;
+    std::vector<Entry_t> ret;
 
-      Entry_t entry;
-      while (in.read(reinterpret_cast<char *>(&entry), sizeof(entry))) {
-        buffer.push_back(entry);
-      }
-
-      in.close();
+    for (int i = 0; i < buffer.size(); i++)
+    {
+        Entry_t temp_entry = buffer[i];
+        if (temp_entry.del)
+        {
+            // delete item exists on same level, remove the item.
+            if (hash_mp.find(temp_entry.key) != hash_mp.end())
+            {
+                hash_mp.erase(temp_entry.key);
+            }
+            else
+            { // delete item not exists on same level. proprogate.
+                hash_mp[temp_entry.key] = temp_entry;
+            }
+        }
+        else
+        { // this operation will always use a later key/val to update output
+          // value.
+            hash_mp[temp_entry.key] = temp_entry;
+        }
+    }
+    for (const auto &pair : hash_mp)
+    {
+        ret.push_back(pair.second);
     }
 
-    // delete current level info and files.
-    for (int i = 0; i < cur->run_storage.size(); i++) {
-      std::filesystem::path fileToDelete(
-          cur->run_storage[i].get_file_location());
-      std::filesystem::remove(fileToDelete);
-    }
-    cur->run_storage.clear();
+    std::sort(ret.begin(), ret.end());
 
-    cur = cur->next_level;
-  }
-
-  // resolve updates and deletes
-  std::unordered_map<KEY_t, Entry_t> hash_mp;
-  std::vector<Entry_t> ret;
-
-  for (int i = 0; i < buffer.size(); i++) {
-    Entry_t temp_entry = buffer[i];
-    if (temp_entry.del) {
-      // delete item exists on same level, remove the item.
-      if (hash_mp.find(temp_entry.key) != hash_mp.end()) {
-        hash_mp.erase(temp_entry.key);
-      } else {  // delete item not exists on same level. proprogate.
-        hash_mp[temp_entry.key] = temp_entry;
-      }
-    } else {  // this operation will always use a later key/val to update output
-              // value.
-      hash_mp[temp_entry.key] = temp_entry;
-    }
-  }
-  for (const auto &pair : hash_mp) {
-    ret.push_back(pair.second);
-  }
-
-  std::sort(ret.begin(), ret.end());
-
-  // TODO: I think I should pass by reference here. This buffer could be pretty
-  // big.
-  return ret;
+    // TODO: I think I should pass by reference here. This buffer could be pretty
+    // big.
+    return ret;
 }
 
 // this function will save the in-memory data and maintain file structure for
 // data persistence.
-void LSM_Tree::exit_save() {
-  // save in memory component to file
-  //  write data structure to file.
-  //  memory get its own designated file. named LSM_memory.dat. Don't need meta
-  //  data. secondary memory is maintained by saving another meta data file for
-  //  the file structure.
-  exit_save_memory();
-  level_meta_save();
+void LSM_Tree::exit_save()
+{
+    // save in memory component to file
+    //  write data structure to file.
+    //  memory get its own designated file. named LSM_memory.dat. Don't need meta
+    //  data. secondary memory is maintained by saving another meta data file for
+    //  the file structure.
+    exit_save_memory();
+    level_meta_save();
 }
 
 // create a Run and associated file for a given vector of entries.
-Run LSM_Tree::create_run(std::vector<Entry_t> buffer) {
-  // create new bloom, new fence pointer, create new run in next level.
-  std::string file_name = generateRandomString(6);
+Run LSM_Tree::create_run(std::vector<Entry_t> buffer)
+{
+    // create new bloom, new fence pointer, create new run in next level.
+    std::string file_name = generateRandomString(6);
 
-  BloomFilter *bloom = new BloomFilter(bloom_bits_per_entry * buffer.size());
-  std::vector<KEY_t> *fence = new std::vector<KEY_t>;
+    BloomFilter *bloom = new BloomFilter(bloom_bits_per_entry * buffer.size());
+    std::vector<KEY_t> *fence = new std::vector<KEY_t>;
 
-  LSM_Tree::create_bloom_filter(bloom, buffer);
-  LSM_Tree::save_to_memory(file_name, fence, buffer);
+    LSM_Tree::create_bloom_filter(bloom, buffer);
+    LSM_Tree::save_to_memory(file_name, fence, buffer);
 
-  Run run(file_name, bloom, fence);
-  return run;
+    Run run(file_name, bloom, fence);
+    return run;
 }
 
-void LSM_Tree::create_bloom_filter(BloomFilter *bloom,
-                                   const std::vector<Entry_t> &vec) {
-  for (int i = 0; i < vec.size(); i++) {
-    bloom->set(vec[i].key);
-  }
+void LSM_Tree::create_bloom_filter(BloomFilter *bloom, const std::vector<Entry_t> &vec)
+{
+    for (int i = 0; i < vec.size(); i++)
+    {
+        bloom->set(vec[i].key);
+    }
 };
 
 /**
@@ -302,76 +336,90 @@ void LSM_Tree::create_bloom_filter(BloomFilter *bloom,
  * the fence pointers
  * @param  {std::vector<Entry_t>} vec          : a vector containing entries.
  */
-void LSM_Tree::save_to_memory(std::string filename,
-                              std::vector<KEY_t> *fence_pointer,
-                              std::vector<Entry_t> &vec) {
-  // two pointers to keep track of memory and fence_pointer traversal.
-  std::vector<int> bool_bits;
-  int memory_cnt = 0, fence_pointer_index = 0;
-  std::ofstream out(filename, std::ios::binary);
+void LSM_Tree::save_to_memory(std::string filename, std::vector<KEY_t> *fence_pointer, std::vector<Entry_t> &vec)
+{
+    // two pointers to keep track of memory and fence_pointer traversal.
+    std::vector<int> bool_bits;
+    int memory_cnt = 0, fence_pointer_index = 0;
+    std::ofstream out(filename, std::ios::binary);
 
-  if (!out.is_open()) {
-    throw std::runtime_error("Unable to open file for writing");
-  }
-
-  for (const auto &entry : vec) {  // go through all entries.
-    bool_bits.push_back(entry.del);
-
-    if (memory_cnt == 0) {
-      fence_pointer->push_back(entry.key);
-      fence_pointer_index++;
-    }
-    out.write(reinterpret_cast<const char *>(&entry.key), sizeof(entry.key));
-    out.write(reinterpret_cast<const char *>(&entry.val), sizeof(entry.val));
-
-    memory_cnt = sizeof(entry.key) + sizeof(entry.val) + memory_cnt;
-
-    // reached page maximum. Append the bool_bits to the back of the page.
-    if (memory_cnt == SAVE_MEMORY_PAGE_SIZE) {
-      memory_cnt = 0;
-      uint64_t result = 0;
-
-      if (bool_bits.size() != 64) {
-        throw std::runtime_error("Vector must contain exactly 64 elements.");
-      }
-
-      for (size_t i = 0; i < 64; ++i) {
-        if (bool_bits[i] != 0 && bool_bits[i] != 1) {
-          throw std::runtime_error("Vector must contain only 0s and 1s.");
-        }
-        // Shift the bit to the correct position and set it in 'result'
-        result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
-      }
-      out.write(reinterpret_cast<const char *>(&result), sizeof(result));
-      bool_bits.clear();
-    }
-  }
-
-  fence_pointer->push_back(vec.back().key);
-
-  if (bool_bits.size() > 0) {
-    while (
-        bool_bits.size() <
-        64)  // if i were to alter page size, need to use a constant for this.
+    if (!out.is_open())
     {
-      int padding = 0;
-      bool_bits.push_back(padding);  // pad with zeros
+        throw std::runtime_error("Unable to open file for writing");
     }
 
-    uint64_t result = 0;
-    for (size_t i = 0; i < 64; ++i) {
-      if (bool_bits[i] != 0 && bool_bits[i] != 1) {
-        throw std::runtime_error("Vector must contain only 0s and 1s.");
-      }
-      // Shift the bit to the correct position and set it in 'result'
-      result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
-    }
-    out.write(reinterpret_cast<const char *>(&result), sizeof(result));
-    bool_bits.clear();
-  }
+    for (const auto &entry : vec)
+    { // go through all entries.
+        if (entry.del){
+          bool_bits.push_back(1);
+        } else {
+          bool_bits.push_back(0);
+        }
+        
+        if (memory_cnt == 0)
+        {
+            fence_pointer->push_back(entry.key);
+            fence_pointer_index++;
+        }
+        out.write(reinterpret_cast<const char *>(&entry.key), sizeof(entry.key));
+        out.write(reinterpret_cast<const char *>(&entry.val), sizeof(entry.val));
 
-  out.close();
-  // std::cout << "Successfully written to file : " << filename << std::endl;
+        memory_cnt = sizeof(entry.key) + sizeof(entry.val) + memory_cnt;
+
+        // reached page maximum. Append the bool_bits to the back of the page.
+        if (memory_cnt == SAVE_MEMORY_PAGE_SIZE)
+        {
+            memory_cnt = 0;
+            uint64_t result = 0;
+
+            if (bool_bits.size() != 64)
+            {
+                throw std::runtime_error("Vector must contain exactly 64 elements.");
+            }
+
+            for (size_t i = 0; i < 64; ++i)
+            {
+                if (bool_bits[i] != 0 && bool_bits[i] != 1)
+                {
+                    for (int value : bool_bits) // for debugging. 
+                    {
+                        std::cout << value << std::endl;
+                    }
+                    throw std::runtime_error("Vector must contain only 0s and 1s.");
+                }
+                // Shift the bit to the correct position and set it in 'result'
+                result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+            }
+            out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+            bool_bits.clear();
+        }
+    }
+
+    fence_pointer->push_back(vec.back().key);
+
+    if (bool_bits.size() > 0)
+    {
+        while (bool_bits.size() < 64) // if i were to alter page size, need to use a constant for this.
+        {
+            int padding = 0;
+            bool_bits.push_back(padding); // pad with zeros
+        }
+
+        uint64_t result = 0;
+        for (size_t i = 0; i < 64; ++i)
+        {
+            if (bool_bits[i] != 0 && bool_bits[i] != 1)
+            {
+                throw std::runtime_error("Vector must contain only 0s and 1s.");
+            }
+            // Shift the bit to the correct position and set it in 'result'
+            result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+        }
+        out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+        bool_bits.clear();
+    }
+
+    out.close();
 }
 
 /**
@@ -380,152 +428,327 @@ void LSM_Tree::save_to_memory(std::string filename,
  * TODO: There is pretty big overlap between exit_save_memory() and
  * save_memory(). Explore simplification.
  */
-void LSM_Tree::exit_save_memory() {
-  std::vector<int> bool_bits;
-  int memory_cnt = 0;
-  std::string filename = "lsm_tree_memory.dat";
-  std::vector<Entry_t> buffer = in_mem->flush_buffer();
+void LSM_Tree::exit_save_memory()
+{
+    std::vector<int> bool_bits;
+    int memory_cnt = 0;
+    std::string filename = "lsm_tree_memory.dat";
+    std::vector<Entry_t> buffer = in_mem->flush_buffer();
 
-  std::ofstream out(filename, std::ios::binary);
+    std::ofstream out(filename, std::ios::binary);
 
-  if (!out.is_open()) {
-    throw std::runtime_error("Unable to open file for writing");
-  }
+    if (!out.is_open())
+    {
+        throw std::runtime_error("Unable to open file for writing");
+    }
 
-  for (const auto &entry : buffer) {  // go through all entries.
-    bool_bits.push_back(entry.del);
+    for (const auto &entry : buffer)
+    { // go through all entries.
+        bool_bits.push_back(entry.del);
 
-    out.write(reinterpret_cast<const char *>(&entry.key), sizeof(entry.key));
-    out.write(reinterpret_cast<const char *>(&entry.val), sizeof(entry.val));
+        out.write(reinterpret_cast<const char *>(&entry.key), sizeof(entry.key));
+        out.write(reinterpret_cast<const char *>(&entry.val), sizeof(entry.val));
 
-    memory_cnt = sizeof(entry.key) + sizeof(entry.val) + memory_cnt;
+        memory_cnt = sizeof(entry.key) + sizeof(entry.val) + memory_cnt;
 
-    if (memory_cnt == SAVE_MEMORY_PAGE_SIZE) {
-      memory_cnt = 0;
-      uint64_t result = 0;
+        if (memory_cnt == SAVE_MEMORY_PAGE_SIZE)
+        {
+            memory_cnt = 0;
+            uint64_t result = 0;
 
-      if (bool_bits.size() != 64) {
-        throw std::runtime_error("Vector must contain exactly 64 elements.");
-      }
+            if (bool_bits.size() != 64)
+            {
+                throw std::runtime_error("Vector must contain exactly 64 elements.");
+            }
 
-      for (size_t i = 0; i < 64; ++i) {
-        if (bool_bits[i] != 0 && bool_bits[i] != 1) {
-          throw std::runtime_error("Vector must contain only 0s and 1s.");
+            for (size_t i = 0; i < 64; ++i)
+            {
+                if (bool_bits[i] != 0 && bool_bits[i] != 1)
+                {
+                    throw std::runtime_error("Vector must contain only 0s and 1s.");
+                }
+                // Shift the bit to the correct position and set it in 'result'
+                result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+            }
+            out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+            bool_bits.clear();
         }
-        // Shift the bit to the correct position and set it in 'result'
-        result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
-      }
-      out.write(reinterpret_cast<const char *>(&result), sizeof(result));
-      bool_bits.clear();
     }
-  }
 
-  if (bool_bits.size() > 0) {
-    while (bool_bits.size() < 64) {
-      int padding = 0;
-      bool_bits.push_back(padding);  // pad with zeros
+    if (bool_bits.size() > 0)
+    {
+        while (bool_bits.size() < 64)
+        {
+            int padding = 0;
+            bool_bits.push_back(padding); // pad with zeros
+        }
+        uint64_t result = 0;
+        for (size_t i = 0; i < 64; ++i)
+        {
+            if (bool_bits[i] != 0 && bool_bits[i] != 1)
+            {
+                throw std::runtime_error("Vector must contain only 0s and 1s.");
+            }
+            // Shift the bit to the correct position and set it in 'result'
+            result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
+        }
+        out.write(reinterpret_cast<const char *>(&result), sizeof(result));
+        bool_bits.clear();
     }
-    uint64_t result = 0;
-    for (size_t i = 0; i < 64; ++i) {
-      if (bool_bits[i] != 0 && bool_bits[i] != 1) {
-        throw std::runtime_error("Vector must contain only 0s and 1s.");
-      }
-      // Shift the bit to the correct position and set it in 'result'
-      result |= static_cast<uint64_t>(bool_bits[i]) << (63 - i);
-    }
-    out.write(reinterpret_cast<const char *>(&result), sizeof(result));
-    bool_bits.clear();
-  }
 
-  out.close();
+    out.close();
 }
 
-void LSM_Tree::level_meta_save() {
-  // storing each of the secondary storage related data in different files.
-  // bloom and fence pointer binary size are stored as txt in the meta data
-  // file. easier to load data on boot.
-  std::string meta_data = "lsm_tree_level_meta.txt";
-  std::ofstream meta(meta_data);
+void LSM_Tree::level_meta_save()
+{
+    // storing each of the secondary storage related data in different files.
+    // bloom and fence pointer binary size are stored as txt in the meta data
+    // file. easier to load data on boot.
+    std::string meta_data = "lsm_tree_level_meta.txt";
+    std::ofstream meta(meta_data);
 
-  if (!meta.is_open()) {
-    std::cerr << "Failed to open the files." << std::endl;
-  }
-
-  Level_Node *cur = root;
-
-  // write meta data to the LSM tree first.
-  meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size
-       << " " << mode << "\n";
-
-  while (cur) {
-    std::cout << cur->level << ": ";
-    // for each level: write current level, level limit, run count, then
-    // specific data for each run.
-    meta << cur->level << " " << cur->max_num_of_runs << " "
-         << cur->run_storage.size() << "\n";
-
-    // for each run: write filename, bloom size and fence size.
-    for (int i = 0; i < cur->run_storage.size(); i++) {
-      std::cout << cur->run_storage[i].get_file_location() << ", ";
-
-      // write bloom filter to binary file. TODO: debug this. maybe the spacing
-      // of things could be wrong.
-      BloomFilter temp_bloom = cur->run_storage[i].return_bloom();
-      boost::dynamic_bitset<> temp_bitarray = temp_bloom.return_bitarray();
-
-      std::string bloom_filename =
-          "bloom_" + cur->run_storage[i].get_file_location();
-      std::ofstream bloom(bloom_filename);
-      bloom << temp_bitarray;  // Write the bitset to the file
-      bloom.close();
-
-      // Write fence pointers to binary file
-      std::vector<KEY_t> temp_fence = cur->run_storage[i].return_fence();
-
-      std::string fence_filename =
-          "fence_" + cur->run_storage[i].get_file_location();
-      std::ofstream fence(fence_filename);
-      fence.write(reinterpret_cast<const char *>(&temp_fence[0]),
-                  temp_fence.size() * sizeof(KEY_t));
-      fence.close();
-
-      meta << cur->run_storage[i].get_file_location() << std::endl;
+    if (!meta.is_open())
+    {
+        std::cerr << "Failed to open the files." << std::endl;
     }
 
-    std::cout << "\n----------------------------" << std::endl;
-    cur = cur->next_level;
-  }
+    Level_Node *cur = root;
 
-  meta.close();
+    // write meta data to the LSM tree first.
+    meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size << " " << mode << "\n";
+
+    while (cur)
+    {
+        std::cout << cur->level << ": ";
+        // for each level: write current level, level limit, run count, then
+        // specific data for each run.
+        meta << cur->level << " " << cur->max_num_of_runs << " " << cur->run_storage.size() << "\n";
+
+        // for each run: write filename, bloom size and fence size.
+        for (int i = 0; i < cur->run_storage.size(); i++)
+        {
+            std::cout << cur->run_storage[i].get_file_location() << ", ";
+
+            // write bloom filter to binary file. TODO: debug this. maybe the spacing
+            // of things could be wrong.
+            BloomFilter temp_bloom = cur->run_storage[i].return_bloom();
+            boost::dynamic_bitset<> temp_bitarray = temp_bloom.return_bitarray();
+
+            std::string bloom_filename = "bloom_" + cur->run_storage[i].get_file_location();
+            std::ofstream bloom(bloom_filename);
+            bloom << temp_bitarray; // Write the bitset to the file
+            bloom.close();
+
+            // Write fence pointers to binary file
+            std::vector<KEY_t> temp_fence = cur->run_storage[i].return_fence();
+
+            std::string fence_filename = "fence_" + cur->run_storage[i].get_file_location();
+            std::ofstream fence(fence_filename);
+            fence.write(reinterpret_cast<const char *>(&temp_fence[0]), temp_fence.size() * sizeof(KEY_t));
+            fence.close();
+
+            meta << cur->run_storage[i].get_file_location() << std::endl;
+        }
+
+        std::cout << "\n----------------------------" << std::endl;
+        cur = cur->next_level;
+    }
+
+    meta.close();
 }
 
 // helper function for generating a file_name for on-disk storage file name.
-std::string LSM_Tree::generateRandomString(size_t length) {
-  const std::string chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  std::string randomString;
-  auto seed =
-      std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  std::mt19937 generator(static_cast<unsigned int>(seed));
-  std::uniform_int_distribution<> distribution(0, chars.size() - 1);
+std::string LSM_Tree::generateRandomString(size_t length)
+{
+    const std::string chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    std::string randomString;
+    auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::mt19937 generator(static_cast<unsigned int>(seed));
+    std::uniform_int_distribution<> distribution(0, chars.size() - 1);
 
-  for (size_t i = 0; i < length; ++i) {
-    randomString += chars[distribution(generator)];
-  }
+    for (size_t i = 0; i < length; ++i)
+    {
+        randomString += chars[distribution(generator)];
+    }
 
-  return "lsm_tree_" + randomString + ".dat";
+    return "lsm_tree_" + randomString + ".dat";
 }
 
-void LSM_Tree::print() {
-  Level_Node *cur = root;
 
-  while (cur) {
-    std::cout << cur->level << ": " << std::endl;
-    for (int i = 0; i < cur->run_storage.size() - 1; i++) {
-      std::cout << cur->run_storage[i].get_file_location() << " ";
+void LSM_Tree::load_memory()
+{
+    std::string memory_data = "lsm_tree_memory.dat";
+    std::ifstream memory(memory_data, std::ios::binary);
+    if (!memory.is_open())
+    {
+        std::cerr << "Failed to open the memory file." << std::endl;
     }
-    std::cout
-        << cur->run_storage[cur->run_storage.size() - 1].get_file_location()
-        << std::endl;
-    cur = cur->next_level;
-  }
+    // load in buffer from last instance. Need to be aware of the boolbits at the end.
+    Entry_t entry;
+
+    // get file size
+    memory.seekg(0, std::ios::end);
+    size_t fileSize = memory.tellg();
+    int total_page = fileSize / LOAD_MEMORY_PAGE_SIZE + 1;
+    int cur_page = 0;
+    int read_size;
+    // modify read_size base on how much more we can read.
+    while (cur_page < total_page)
+    {
+        if ((cur_page + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize)
+        {
+            read_size = fileSize - cur_page * LOAD_MEMORY_PAGE_SIZE;
+        }
+        else
+        {
+            read_size = LOAD_MEMORY_PAGE_SIZE;
+        }
+
+        // read in del flags: starting * page_size -> begining of page
+        memory.seekg(cur_page * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
+        uint64_t result;
+        memory.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
+        std::bitset<64> del_flag_bitset(result);
+        memory.seekg(0, std::ios::beg); // reset file stream
+
+        // shift file stream pointer to starting_point base on fence pointer result.
+        memory.seekg(cur_page * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
+
+        int idx = 0;
+        while (read_size > BOOL_BYTE_CNT)
+        { // change into binary search if i have time.
+            memory.read(reinterpret_cast<char *>(&entry.key), sizeof(entry.key));
+            memory.read(reinterpret_cast<char *>(&entry.val), sizeof(entry.val));
+
+            entry.del = del_flag_bitset[63 - idx];
+            put(entry);
+            read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
+            idx++;
+        }
+        cur_page++;
+    }
+
+    memory.close();
+}
+
+void LSM_Tree::reconstruct_file_structure(std::ifstream &meta)
+{
+    std::string line;
+    Level_Node *cur = root;
+
+    while (std::getline(meta, line))
+    {
+        std::cout << line << std::endl;
+        std::istringstream iss(line);
+
+        if (std::isdigit(line[0]))
+        {
+            std::string level, max_run, run_cnt;
+            if (!(iss >> level >> max_run >> run_cnt))
+            {
+                break; // issue here.
+            };
+
+            if (level != "0")
+            {
+                cur->next_level = new LSM_Tree::Level_Node(cur->level + 1, cur->max_num_of_runs);
+                cur = cur->next_level;
+            }
+        }
+        else
+        {
+            std::string filename;
+            iss >> filename;
+
+            std::ifstream bloom("bloom_" + filename), fence("fence_" + filename, std::ios::binary);
+
+            boost::dynamic_bitset<> input_bitarray;
+            bloom >> input_bitarray;
+
+            BloomFilter *bloom_filter = new BloomFilter(input_bitarray);
+
+            std::vector<KEY_t> *fence_pointer = new std::vector<KEY_t>;
+            KEY_t key;
+            while (fence.read(reinterpret_cast<char *>(&key), sizeof(KEY_t)))
+            {
+                fence_pointer->push_back(key);
+            }
+
+            Run run(filename, bloom_filter, fence_pointer);
+            cur->run_storage.push_back(run);
+            fence.close();
+            bloom.close();
+        }
+    }
+    std::cout << "meta load complete!" << std::endl;
+}
+
+std::vector<Entry_t> LSM_Tree::load_full_file(std::string file_location, std::vector<KEY_t> fence_pointers)
+{   
+    // read-in the the oldest run at the level.
+    std::ifstream file(file_location, std::ios::binary);
+
+    if (!file.is_open())
+        throw std::runtime_error("Unable to open file for writing");
+
+    Entry_t entry;
+    std::vector<Entry_t> buffer;
+
+    file.seekg(0, std::ios::end);
+    size_t fileSize = file.tellg();
+    size_t read_size;
+    // read in the run's information.
+    for (int i = 0; i < fence_pointers.size(); i++)
+    {
+        
+        if (i * LOAD_MEMORY_PAGE_SIZE > fileSize)
+        {
+            read_size = fileSize - (i-1) * LOAD_MEMORY_PAGE_SIZE;
+        }
+        else
+        {
+            read_size = LOAD_MEMORY_PAGE_SIZE;
+        }
+
+        // read in del flags: starting * page_size -> begining of page
+        uint64_t result;
+        file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
+        file.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
+        std::bitset<64> del_flag_bitset(result);
+        file.seekg(0, std::ios::beg);
+
+        file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
+
+        int idx = 0;
+        while (read_size > BOOL_BYTE_CNT)
+        { 
+            file.read(reinterpret_cast<char *>(&entry.key), sizeof(entry.key));
+            file.read(reinterpret_cast<char *>(&entry.val), sizeof(entry.val));
+
+            entry.del = del_flag_bitset[63 - idx];
+            buffer.push_back(entry);
+
+            read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
+            idx++;
+        }
+    }
+    file.close(); 
+    return buffer;
+}
+
+
+void LSM_Tree::print()
+{
+    Level_Node *cur = root;
+
+    while (cur)
+    {
+        std::cout << cur->level << ": " << std::endl;
+        for (int i = 0; i < cur->run_storage.size() - 1; i++)
+        {
+            std::cout << cur->run_storage[i].get_file_location() << " ";
+        }
+        std::cout << cur->run_storage[cur->run_storage.size() - 1].get_file_location() << std::endl;
+        cur = cur->next_level;
+    }
 }

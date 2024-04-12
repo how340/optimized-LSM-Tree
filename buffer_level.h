@@ -41,6 +41,18 @@ class BufferLevel {
     return 0;
   };
 
+  //overload for easy loading memory
+  int insert(Entry_t entry) {
+    if (current_size >= max_size) {
+      return -1;
+    }
+
+    store.push_back(entry);
+    current_size++;
+
+    return 0;
+  };
+
   // Deletion is done as write with an additional flag.
   int del(KEY_t key) {
     if (current_size >= max_size) {
