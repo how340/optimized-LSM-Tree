@@ -1,29 +1,15 @@
+// g++ -g  main.cpp bloom.cpp run.cpp lsm_tree.cpp sys.cpp -o program
 #include <filesystem>
 #include <iostream>
 #include <sstream>
-#include <boost/asio.hpp>
 
 #include "buffer_level.h"
 #include "lsm_tree.h"
 #include "run.h"
 #include "sys.h"
 
-
 namespace fs = std::filesystem;
 
-/*
-List of TODO elements:
-1.implement data persistence - create API to handle saving normal files, reading
-in saved files, and handling exiting applications.
-2. Implement the two other query operators (range, delete). I need to figure out
-what to save delete as. (add an additional bit?)
-2. Implement a more advanced merge policy to improve performance.
-3. Improve the two optimization proposed in the paper.
-4. Implement more optimization by myself.
-5. multi-threaded support
-6. better file I/O approach.
-
-*/
 
 void command_loop(LSM_Tree *tree)
 {
@@ -106,8 +92,26 @@ void command_loop(LSM_Tree *tree)
             tree->del(key_a);
             break;
         }
-        // TODO: add the load operator.
-        case 'x': { // print current LSM tree view
+         case 'l': { // load from binary file.
+            std::string file_path;
+            std::cin >> file_path;
+
+            std::ifstream file(file_path, std::ios::binary);
+            if (!file)
+            {
+                std::cerr << "Cannot open file: " << file_path << std::endl;
+            }
+
+            while (file.read(reinterpret_cast<char *>(&key_a), sizeof(key_a)) &&
+                   file.read(reinterpret_cast<char *>(&val), sizeof(val)))
+            {
+                tree->put(key_a, val);
+            }
+
+            file.close();
+            break;
+        }
+        case 's': { // print current LSM tree view
             tree->print();
             break;
         }
@@ -198,27 +202,6 @@ int main(int argc, char *argv[])
     /*
         Testing without command loop.
     */
-
-    // try to set up a local server
-
-
-    try {
-        boost::asio::io_context io_context;
-        boost::asio::ip::tcp::acceptor acceptor(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 1234));
-
-        for (;;) {
-            boost::asio::ip::tcp::socket socket(io_context);
-            acceptor.accept(socket);
-
-            std::string message = "Hello from server";
-            boost::system::error_code ignored_error;
-            boost::asio::write(socket, boost::asio::buffer(message), ignored_error);
-        }
-    } catch (std::exception& e) {
-        std::cerr << e.what() << std::endl;
-    }
-
-
 
     // start time
     auto start = std::chrono::high_resolution_clock::now();

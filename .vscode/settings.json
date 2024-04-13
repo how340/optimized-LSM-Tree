@@ -90,7 +90,8 @@
         "format": "cpp",
         "spanstream": "cpp",
         "stacktrace": "cpp",
-        "stdfloat": "cpp"
+        "stdfloat": "cpp",
+        "filesystem": "cpp"
     },
     "C_Cpp.clang_format_fallbackStyle": "Google"
 }

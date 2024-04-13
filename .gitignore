@@ -39,6 +39,8 @@
 
 #binary program file. 
 program
+server
+client 
 
 #workload related files 
 *.sh
