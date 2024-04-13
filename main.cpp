@@ -1,11 +1,13 @@
 #include <filesystem>
 #include <iostream>
 #include <sstream>
+#include <boost/asio.hpp>
 
 #include "buffer_level.h"
 #include "lsm_tree.h"
 #include "run.h"
 #include "sys.h"
+
 
 namespace fs = std::filesystem;
 
@@ -196,6 +198,27 @@ int main(int argc, char *argv[])
     /*
         Testing without command loop.
     */
+
+    // try to set up a local server
+
+
+    try {
+        boost::asio::io_context io_context;
+        boost::asio::ip::tcp::acceptor acceptor(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 1234));
+
+        for (;;) {
+            boost::asio::ip::tcp::socket socket(io_context);
+            acceptor.accept(socket);
+
+            std::string message = "Hello from server";
+            boost::system::error_code ignored_error;
+            boost::asio::write(socket, boost::asio::buffer(message), ignored_error);
+        }
+    } catch (std::exception& e) {
+        std::cerr << e.what() << std::endl;
+    }
+
+
 
     // start time
     auto start = std::chrono::high_resolution_clock::now();
