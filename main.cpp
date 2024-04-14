@@ -123,7 +123,6 @@ void command_loop(LSM_Tree *tree)
 }
 
 // load data on start up.
-// load data on start up. Might considering migrating some of these functionality into the LSM class.
 LSM_Tree *meta_load_save()
 {
     std::string meta_data = "lsm_tree_level_meta.txt";
