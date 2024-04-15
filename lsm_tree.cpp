@@ -42,6 +42,7 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
     }
 }
 
+// overload for loading memory on boot.
 void LSM_Tree::put(Entry_t entry)
 {
     int insert_result;
@@ -77,6 +78,35 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
         std::unique_ptr<Entry_t> entry = nullptr;
         Level_Node *cur = root;
 
+        // Define the lambda function here
+        auto processRun = [](auto rit, const auto &key) {
+            std::mutex mutex;
+            if (rit->search_bloom(key))
+            {
+                std::cout << "searching run: " << rit->get_file_location() << std::endl; 
+                int starting_point = rit->search_fence(key);
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    std::cout << "starting at: " << starting_point << std::endl;
+                }
+                if (starting_point != -1)
+                {
+                    auto entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
+                    if (entry)
+                    {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        if (entry->del)
+                        {
+                            std::cout << "not found (deleted)" << std::endl;
+                            return; // Adjust return handling for threading
+                        }
+                        std::cout << entry->val << std::endl;
+                        // Handle return value or signal success
+                    }
+                }
+            }
+        };
+
         while (cur)
         {
             std::cout << "searching_level: " << cur->level << std::endl;
@@ -85,25 +115,27 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
             // the most updated data.
             for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
             {
-                if (rit->search_bloom(key))
-                {
-                    int starting_point = rit->search_fence(key);
-                    std::cout << "starting at: " << starting_point << std::endl;
-                    if (starting_point != -1)
-                    {
-                        entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
-                        if (entry)
-                        {
-                            if (entry->del)
-                            {
-                                std::cout << "not found (deleted)" << std::endl;
-                                return nullptr;
-                            }
-                            std::cout << entry->val << std::endl;
-                            return entry;
-                        }
-                    }
-                }
+                // if (rit->search_bloom(key))
+                // {
+                //     int starting_point = rit->search_fence(key);
+                //     std::cout << "starting at: " << starting_point << std::endl;
+                //     if (starting_point != -1)
+                //     {
+                //         entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
+                //         if (entry)
+                //         {
+                //             if (entry->del)
+                //             {
+                //                 std::cout << "not found (deleted)" << std::endl;
+                //                 return nullptr;
+                //             }
+                //             std::cout << entry->val << std::endl;
+                //             return entry;
+                //         }
+                //     }
+                // }
+
+                pool.enqueue([=]() { processRun(rit, key); });
             }
             cur = cur->next_level;
         }
