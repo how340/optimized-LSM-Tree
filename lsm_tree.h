@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "lib/ThreadPool.h"
 #include "buffer_level.h"
 #include "key_value.h"
 #include "run.h"
@@ -26,6 +27,8 @@
 */
 
 class LSM_Tree {
+
+  ThreadPool pool; 
   int buffer_size;
   BufferLevel* in_mem;  // Think about destructor here.
   int bloom_bits_per_entry;
@@ -33,10 +36,6 @@ class LSM_Tree {
   // const int SAVE_MEMORY_PAGE_SIZE = 512;
   int mode;  // determine whether we run the baseline LSM implementation or
              // optimized version. 0 means optimized version, 1 is un-optimized
-
- public:
-  LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode);
-  ~LSM_Tree();
 
   struct Level_node {
     size_t level;
@@ -52,6 +51,10 @@ class LSM_Tree {
   typedef struct Level_node Level_Node;
 
   Level_Node* root;
+
+ public:
+  LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode);
+  ~LSM_Tree();
 
   void put(KEY_t key, VALUE_t val);
   void put(Entry_t entry); // overload for loading saved memory.

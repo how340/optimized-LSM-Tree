@@ -1,7 +1,7 @@
 #include "lsm_tree.h"
 
 LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode)
-    : bloom_bits_per_entry(bits_ratio), level_ratio(level_ratio), buffer_size(buffer_size), mode(mode)
+    : bloom_bits_per_entry(bits_ratio), level_ratio(level_ratio), buffer_size(buffer_size), mode(mode), pool(4)
 {
     in_mem = new BufferLevel(buffer_size);
     root = new Level_Node{0, level_ratio};
@@ -32,7 +32,7 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
     if (insert_result == -1)
     {
         buffer = LSM_Tree::merge(cur);
-        std::cout << cur->level << std::endl; 
+        std::cout << cur->level << std::endl;
         Run merged_run = create_run(buffer);
         cur->run_storage.push_back(merged_run);
 
@@ -50,7 +50,6 @@ void LSM_Tree::put(Entry_t entry)
 
     insert_result = in_mem->insert(entry);
 }
-
 
 /**
  * LSM_Tree
@@ -232,7 +231,7 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
         for (int i = 0; i < cur->run_storage.size(); i++)
         {
             std::vector<Entry_t> temp_buffer;
-            temp_buffer = load_full_file(cur->run_storage[i].get_file_location(),cur->run_storage[i].return_fence());
+            temp_buffer = load_full_file(cur->run_storage[i].get_file_location(), cur->run_storage[i].return_fence());
             buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
         }
 
@@ -352,12 +351,15 @@ void LSM_Tree::save_to_memory(std::string filename, std::vector<KEY_t> *fence_po
 
     for (const auto &entry : vec)
     { // go through all entries.
-        if (entry.del){
-          bool_bits.push_back(1);
-        } else {
-          bool_bits.push_back(0);
+        if (entry.del)
+        {
+            bool_bits.push_back(1);
         }
-        
+        else
+        {
+            bool_bits.push_back(0);
+        }
+
         if (memory_cnt == 0)
         {
             fence_pointer->push_back(entry.key);
@@ -383,7 +385,7 @@ void LSM_Tree::save_to_memory(std::string filename, std::vector<KEY_t> *fence_po
             {
                 if (bool_bits[i] != 0 && bool_bits[i] != 1)
                 {
-                    for (int value : bool_bits) // for debugging. 
+                    for (int value : bool_bits) // for debugging.
                     {
                         std::cout << value << std::endl;
                     }
@@ -576,7 +578,6 @@ std::string LSM_Tree::generateRandomString(size_t length)
     return "lsm_tree_" + randomString + ".dat";
 }
 
-
 void LSM_Tree::load_memory()
 {
     std::string memory_data = "lsm_tree_memory.dat";
@@ -686,7 +687,7 @@ void LSM_Tree::reconstruct_file_structure(std::ifstream &meta)
 }
 
 std::vector<Entry_t> LSM_Tree::load_full_file(std::string file_location, std::vector<KEY_t> fence_pointers)
-{   
+{
     // read-in the the oldest run at the level.
     std::ifstream file(file_location, std::ios::binary);
 
@@ -702,10 +703,10 @@ std::vector<Entry_t> LSM_Tree::load_full_file(std::string file_location, std::ve
     // read in the run's information.
     for (int i = 0; i < fence_pointers.size(); i++)
     {
-        
+
         if (i * LOAD_MEMORY_PAGE_SIZE > fileSize)
         {
-            read_size = fileSize - (i-1) * LOAD_MEMORY_PAGE_SIZE;
+            read_size = fileSize - (i - 1) * LOAD_MEMORY_PAGE_SIZE;
         }
         else
         {
@@ -723,7 +724,7 @@ std::vector<Entry_t> LSM_Tree::load_full_file(std::string file_location, std::ve
 
         int idx = 0;
         while (read_size > BOOL_BYTE_CNT)
-        { 
+        {
             file.read(reinterpret_cast<char *>(&entry.key), sizeof(entry.key));
             file.read(reinterpret_cast<char *>(&entry.val), sizeof(entry.val));
 
@@ -734,10 +735,9 @@ std::vector<Entry_t> LSM_Tree::load_full_file(std::string file_location, std::ve
             idx++;
         }
     }
-    file.close(); 
+    file.close();
     return buffer;
 }
-
 
 void LSM_Tree::print()
 {
