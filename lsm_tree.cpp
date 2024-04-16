@@ -5,6 +5,7 @@ LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, in
 {
     in_mem = new BufferLevel(buffer_size);
     root = new Level_Node{0, level_ratio};
+    num_of_threads = 4;
 }
 
 LSM_Tree::~LSM_Tree()
@@ -72,74 +73,76 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
         std::cout << "found in memory: " << in_mem_result->val << std::endl;
         return in_mem_result;
     }
-    else
-    {
-        // search in secondary storage.
-        std::unique_ptr<Entry_t> entry = nullptr;
-        Level_Node *cur = root;
 
-        // Define the lambda function here
-        auto processRun = [](auto rit, const auto &key) {
-            std::mutex mutex;
-            if (rit->search_bloom(key))
+    std::vector<std::future<std::unique_ptr<Entry_t>>> futures;
+
+    // search in secondary storage.
+    Level_Node *cur = root;
+
+    // Define the lambda function to search each run in a level.
+    auto processRun = [](auto rit, const auto &key) -> std::unique_ptr<Entry_t> {
+        std::unique_ptr<Entry_t> entry = nullptr;
+        std::mutex mutex;
+        std::thread::id this_id = std::this_thread::get_id(); // Get the current thread ID
+        std::cout << "Thread ID: " << this_id << " working..." << std::endl;
+        if (rit->search_bloom(key))
+        {
+            std::cout << "searching run: " << rit->get_file_location() << std::endl; // Debug print
+            int starting_point = rit->search_fence(key);
             {
-                std::cout << "searching run: " << rit->get_file_location() << std::endl; 
-                int starting_point = rit->search_fence(key);
+                std::lock_guard<std::mutex> lock(mutex);
+                std::cout << "starting at: " << starting_point << std::endl;
+            }
+            if (starting_point != -1)
+            {
+                auto entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
+                if (entry)
                 {
                     std::lock_guard<std::mutex> lock(mutex);
-                    std::cout << "starting at: " << starting_point << std::endl;
-                }
-                if (starting_point != -1)
-                {
-                    auto entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
-                    if (entry)
+                    if (entry->del)
                     {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        if (entry->del)
-                        {
-                            std::cout << "not found (deleted)" << std::endl;
-                            return; // Adjust return handling for threading
-                        }
-                        std::cout << entry->val << std::endl;
-                        // Handle return value or signal success
+                        std::cout << "not found (deleted)" << std::endl << std::flush; // Debug print
+                        return nullptr;
                     }
+                    std::cout << entry->val << std::endl << std::flush; // Debug print
+                    return entry;
                 }
             }
-        };
+        }
+        return nullptr;
+    };
 
-        while (cur)
+    while (cur)
+    {
+        std::cout << "searching_level: " << cur->level << std::endl;
+
+        std::vector<std::future<std::unique_ptr<Entry_t>>> futures;
+        // start search from the back of the run storage. The latest run contains
+        // the most updated data.
+        int cnt = 0;
+        for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
         {
-            std::cout << "searching_level: " << cur->level << std::endl;
 
-            // start search from the back of the run storage. The latest run contains
-            // the most updated data.
-            for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
-            {
-                // if (rit->search_bloom(key))
-                // {
-                //     int starting_point = rit->search_fence(key);
-                //     std::cout << "starting at: " << starting_point << std::endl;
-                //     if (starting_point != -1)
-                //     {
-                //         entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
-                //         if (entry)
-                //         {
-                //             if (entry->del)
-                //             {
-                //                 std::cout << "not found (deleted)" << std::endl;
-                //                 return nullptr;
-                //             }
-                //             std::cout << entry->val << std::endl;
-                //             return entry;
-                //         }
-                //     }
-                // }
+            futures.push_back(pool.enqueue([=]() -> std::unique_ptr<Entry> { return processRun(rit, key); }));
+        }
 
-                pool.enqueue([=]() { processRun(rit, key); });
+        cur = cur->next_level;
+    }
+
+    // Now, iterate over the futures to get the first valid result
+    std::unique_ptr<Entry_t> firstValidResult;
+    for (auto &future : futures)
+    {
+        if (future.valid())
+        {
+            auto result = future.get(); // This will block until the result is ready
+            if (result && !result->del)
+            { // Assuming there is a 'deleted' flag you're checking
+                return result;
             }
-            cur = cur->next_level;
         }
     }
+
     std::cout << "not found" << std::endl;
     return nullptr;
 }
@@ -778,11 +781,12 @@ void LSM_Tree::print()
     while (cur)
     {
         std::cout << cur->level << ": " << std::endl;
-        for (int i = 0; i < cur->run_storage.size() - 1; i++)
+        for (int i = 0; i < cur->run_storage.size(); i++)
         {
             std::cout << cur->run_storage[i].get_file_location() << " ";
         }
-        std::cout << cur->run_storage[cur->run_storage.size() - 1].get_file_location() << std::endl;
+        std::cout << " -> end level." << std::endl;
+
         cur = cur->next_level;
     }
 }

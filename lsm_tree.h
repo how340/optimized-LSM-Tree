@@ -28,6 +28,7 @@
 
 class LSM_Tree {
 
+  size_t num_of_threads; 
   ThreadPool pool; 
   int buffer_size;
   BufferLevel* in_mem;  // Think about destructor here.
