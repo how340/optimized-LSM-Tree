@@ -24,6 +24,7 @@ void command_loop(LSM_Tree *tree)
         if (command == 'q')
         { // Assuming 'q' is the command to quit
             tree->exit_save();
+            tree->print_statistics();
             break; // Exit the loop
         }
 
@@ -136,12 +137,12 @@ LSM_Tree *meta_load_save()
     std::string line;
 
     // read in the lsm tree meta data (in first line)
-    int bits_per_entry, level_ratio, buffer_size, mode;
-    std::string a, b, c, d;
+    int bits_per_entry, level_ratio, buffer_size, mode, threads;
+    std::string a, b, c, d, e;
     if (std::getline(meta, line))
     {
         std::istringstream iss(line);
-        if (!(iss >> a >> b >> c >> d))
+        if (!(iss >> a >> b >> c >> d >> e))
         {
             std::cerr << "error loading lsm isntance meta data" << std::endl;
         };
@@ -149,13 +150,14 @@ LSM_Tree *meta_load_save()
         level_ratio = std::stoi(b);
         buffer_size = std::stoi(c);
         mode = std::stoi(d);
+        threads = std::stoi(e);
     }
     else
     {
         std::cout << "Error reading LSM tree instance meta data" << std::endl;
     }
 
-    LSM_Tree *lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode);
+    LSM_Tree *lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode, threads);
 
     lsm_tree->load_memory();
     lsm_tree->reconstruct_file_structure(meta);
@@ -191,11 +193,10 @@ int main(int argc, char *argv[])
     }
     else
     {
-        std::cout << "Some data storage files are missing. Database will overwrite "
-                     "all past data."
-                  << std::endl;
-        lsm_tree = new LSM_Tree(10, 3, 100000,
-                                1); // 1 mil integer buffer size. MAKING THIS # for testing haha.
+        int bits_per_entry, level_ratio, buffer_size, mode, threads;
+        std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
+        lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size,
+                                mode, threads); // 1 mil integer buffer size. MAKING THIS # for testing haha.
     }
 
     /*
@@ -203,34 +204,22 @@ int main(int argc, char *argv[])
     */
 
     // start time
-    auto start = std::chrono::high_resolution_clock::now();
-
     command_loop(lsm_tree);
-
-    // Record the end time
-    auto end = std::chrono::high_resolution_clock::now();
-
-    // Calculate the duration in milliseconds
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-    // Output the duration
-    std::cout << "Program executed in " << duration.count() << " milliseconds." << std::endl;
 
     /* ------------------------------------
     delete files for house keeping.
     ------------------------------------ */
 
-    // fs::path path_to_directory{"./"};
+    fs::path path_to_directory{"./"};
 
-    // // Iterate over the directory
-    // for (const auto& entry : fs::directory_iterator(path_to_directory)) {
-    //     // Check if the file extension is .dat
-    //     if (entry.path().extension() == ".dat") {
-    //         // If it is, delete the file
-    //         fs::remove(entry.path());
-    //         std::cout << "Deleted: " << entry.path() << std::endl;
-    //     }
-    // }
+    // Iterate over the directory
+    for (const auto& entry : fs::directory_iterator(path_to_directory)) {
+        // Check if the file extension is .dat
+        if (entry.path().extension() == ".dat" || entry.path().extension() == ".txt") {
+            // If it is, delete the file
+            fs::remove(entry.path());
+        }
+    }
 
     return 0;
 };

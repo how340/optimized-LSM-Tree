@@ -1,11 +1,11 @@
 #include "lsm_tree.h"
 
-LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode)
-    : bloom_bits_per_entry(bits_ratio), level_ratio(level_ratio), buffer_size(buffer_size), mode(mode), pool(4)
+LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads)
+    : bloom_bits_per_entry(bits_ratio), level_ratio(level_ratio), buffer_size(buffer_size), mode(mode), pool(threads)
 {
     in_mem = new BufferLevel(buffer_size);
     root = new Level_Node{0, level_ratio};
-    num_of_threads = 4;
+    num_of_threads = threads;
 }
 
 LSM_Tree::~LSM_Tree()
@@ -24,6 +24,7 @@ LSM_Tree::~LSM_Tree()
  */
 void LSM_Tree::put(KEY_t key, VALUE_t val)
 {
+    auto start = std::chrono::high_resolution_clock::now();
     int insert_result;
     std::vector<Entry_t> buffer;
     Level_Node *cur = root;
@@ -33,7 +34,6 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
     if (insert_result == -1)
     {
         buffer = LSM_Tree::merge(cur);
-        std::cout << cur->level << std::endl;
         Run merged_run = create_run(buffer);
         cur->run_storage.push_back(merged_run);
 
@@ -41,6 +41,12 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
         in_mem->clear_buffer();
         in_mem->insert(key, val);
     }
+    // Stop measuring time
+    auto stop = std::chrono::high_resolution_clock::now();
+
+    // Calculate the duration and accumulate it
+    std::chrono::duration<double> duration = stop - start;
+    accumulated_time += duration;
 }
 
 // overload for loading memory on boot.
@@ -82,8 +88,7 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
     // Define the lambda function to search each run in a level.
     auto processRun = [](auto rit, const auto &key) -> std::unique_ptr<Entry_t> {
         std::unique_ptr<Entry_t> entry = nullptr;
-        std::thread::id this_id = std::this_thread::get_id(); // Get the current thread ID
-        std::cout << "Thread ID: " << this_id << " working..." << std::endl;
+
         if (rit->search_bloom(key))
         {
             int starting_point = rit->search_fence(key);
@@ -113,11 +118,11 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
         // the most updated data.
         int cnt = 0;
         for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
-        {   
+        {
             futures.push_back(pool.enqueue([=]() -> std::unique_ptr<Entry> { return processRun(rit, key); }));
 
-            // sync up after each batch of threads finish task to prevent unecessary future searches. 
-            if ((cnt + 1) % num_of_threads == 0) 
+            // sync up after each batch of threads finish task to prevent unecessary future searches.
+            if ((cnt + 1) % num_of_threads == 0)
             {
                 for (auto &fut : futures)
                 {
@@ -130,7 +135,7 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
                 futures.clear();
             }
         }
-
+        // check futures for any remaining queued results.
         for (auto &fut : futures)
         {
             auto result = fut.get();
@@ -173,6 +178,7 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
     Node *ret_cur = ret_root;
 
     Level_Node *cur = root;
+    std::vector<std::future<std::vector<Entry_t>>> futures;
 
     while (cur)
     {
@@ -180,11 +186,20 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
         for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
         {
             std::cout << "reading level: " << cur->level << std::endl;
-            ret_cur = ret_cur->next;
-            ret_cur->data = rit->range_disk_search(lower, upper);
+            // ret_cur = ret_cur->next;
+            futures.push_back(
+                pool.enqueue([=]() -> std::vector<Entry_t> { return rit->range_disk_search(lower, upper); }));
         }
         cur = cur->next_level;
     }
+    for (auto &fut : futures)
+    {
+        auto result = fut.get();
+        ret_cur->next = new Node;
+        ret_cur = ret_cur->next;
+        ret_cur->data = result;
+    }
+
     std::unordered_map<KEY_t, Entry_t> hash_mp;
     ret_cur = ret_root; // reset current pointer;
 
@@ -251,9 +266,12 @@ void LSM_Tree::del(KEY_t key)
  */
 std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
 {
-    std::cout << "merging" << std::endl;
     // Insert a new run into storage.
     std::vector<Entry_t> buffer = in_mem->flush_buffer(); // temp buffer for merging.
+
+    // for storing All of the available sub-buffers created.
+    std::vector<std::future<std::vector<Entry_t>>> futures;
+    std::unordered_set<size_t> level_to_delete;
 
     while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1)
     {
@@ -263,59 +281,84 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
         }
 
         // naive full tiering merge policy.
-        for (int i = 0; i < cur->run_storage.size(); i++)
+        for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
         {
-            std::vector<Entry_t> temp_buffer;
-            temp_buffer = load_full_file(cur->run_storage[i].get_file_location(), cur->run_storage[i].return_fence());
-            buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
+            futures.push_back(pool.enqueue([=]() -> std::vector<Entry_t> {
+                return load_full_file(rit->get_file_location(), rit->return_fence());
+            }));
         }
 
-        // delete current level info and files.
-        for (int i = 0; i < cur->run_storage.size(); i++)
-        {
-            std::filesystem::path fileToDelete(cur->run_storage[i].get_file_location());
-            std::filesystem::remove(fileToDelete);
-        }
-        cur->run_storage.clear();
+        level_to_delete.insert(cur->level);
 
         cur = cur->next_level;
-        std::cout << cur->level << std::endl;
+        /* ------------------------------------------------ */
+        // this is the sequential processing approach.
+        // // std::cout << cur->level << std::endl;
+        // naive full tiering merge policy.
+        // for (int i = 0; i < cur->run_storage.size(); i++)
+        // {
+        //     std::vector<Entry_t> temp_buffer;
+        //     temp_buffer = load_full_file(cur->run_storage[i].get_file_location(),
+        //     cur->run_storage[i].return_fence()); buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
+        // }
+
+        // // delete current level info and files.
+        // for (int i = 0; i < cur->run_storage.size(); i++)
+        // {
+        //     std::filesystem::path fileToDelete(cur->run_storage[i].get_file_location());
+        //     std::filesystem::remove(fileToDelete);
+        // }
+        // cur->run_storage.clear();
+
+        // cur = cur->next_level;
     }
 
-    // resolve updates and deletes
+    // reconstruct a full buffer and resolve updates/ deletes
     std::unordered_map<KEY_t, Entry_t> hash_mp;
     std::vector<Entry_t> ret;
-
-    for (int i = 0; i < buffer.size(); i++)
+    //add buffer to hashmap first. 
+    for (auto &entry : buffer){
+        hash_mp[entry.key] = entry;
+    }
+    // go through merged items. 
+    for (auto &fut : futures)
     {
-        Entry_t temp_entry = buffer[i];
-        if (temp_entry.del)
+        std::vector<Entry_t> results = fut.get();
+        for (auto &entry : results)
         {
-            // delete item exists on same level, remove the item.
-            if (hash_mp.find(temp_entry.key) != hash_mp.end())
+            auto it = hash_mp.find(entry.key);
+
+            if (it == hash_mp.end())
             {
-                hash_mp.erase(temp_entry.key);
+                hash_mp[entry.key] = entry;
             }
-            else
-            { // delete item not exists on same level. proprogate.
-                hash_mp[temp_entry.key] = temp_entry;
-            }
-        }
-        else
-        { // this operation will always use a later key/val to update output
-          // value.
-            hash_mp[temp_entry.key] = temp_entry;
         }
     }
+    futures.clear();
+    // convert back to vector and sort. 
     for (const auto &pair : hash_mp)
     {
         ret.push_back(pair.second);
     }
-
     std::sort(ret.begin(), ret.end());
 
-    // TODO: I think I should pass by reference here. This buffer could be pretty
-    // big.
+    // delete outdated files. 
+    Level_Node *del_cur = root;
+    while (level_to_delete.size() > 0)
+    {
+        if (level_to_delete.find(del_cur->level) != level_to_delete.end())
+        {
+            for (int i = 0; i < del_cur->run_storage.size(); i++)
+            {
+                std::filesystem::path fileToDelete(del_cur->run_storage[i].get_file_location());
+                std::filesystem::remove(fileToDelete);
+            }
+            del_cur->run_storage.clear();
+            level_to_delete.erase(del_cur->level);
+        }
+        del_cur = del_cur->next_level;
+    }
+
     return ret;
 }
 
@@ -478,7 +521,7 @@ void LSM_Tree::exit_save_memory()
 
     if (!out.is_open())
     {
-        throw std::runtime_error("Unable to open file for writing");
+        throw std::runtime_error("Unable to open file for writing on exit save");
     }
 
     for (const auto &entry : buffer)
@@ -554,11 +597,11 @@ void LSM_Tree::level_meta_save()
     Level_Node *cur = root;
 
     // write meta data to the LSM tree first.
-    meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size << " " << mode << "\n";
+    meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size << " " << mode << " " << num_of_threads
+         << "\n";
 
     while (cur)
     {
-        std::cout << cur->level << ": ";
         // for each level: write current level, level limit, run count, then
         // specific data for each run.
         meta << cur->level << " " << cur->max_num_of_runs << " " << cur->run_storage.size() << "\n";
@@ -566,10 +609,9 @@ void LSM_Tree::level_meta_save()
         // for each run: write filename, bloom size and fence size.
         for (int i = 0; i < cur->run_storage.size(); i++)
         {
-            std::cout << cur->run_storage[i].get_file_location() << ", ";
+            // std::cout << cur->run_storage[i].get_file_location() << ", ";
 
-            // write bloom filter to binary file. TODO: debug this. maybe the spacing
-            // of things could be wrong.
+            // write bloom filter to binary file of things could be wrong.
             BloomFilter temp_bloom = cur->run_storage[i].return_bloom();
             boost::dynamic_bitset<> temp_bitarray = temp_bloom.return_bitarray();
 
@@ -589,7 +631,6 @@ void LSM_Tree::level_meta_save()
             meta << cur->run_storage[i].get_file_location() << std::endl;
         }
 
-        std::cout << "\n----------------------------" << std::endl;
         cur = cur->next_level;
     }
 
@@ -611,6 +652,11 @@ std::string LSM_Tree::generateRandomString(size_t length)
     }
 
     return "lsm_tree_" + randomString + ".dat";
+}
+
+void LSM_Tree::print_statistics()
+{
+    std::cout << "PUT time: " << accumulated_time.count() * 1000 << "ms" << std::endl;
 }
 
 void LSM_Tree::load_memory()
@@ -725,9 +771,8 @@ std::vector<Entry_t> LSM_Tree::load_full_file(std::string file_location, std::ve
 {
     // read-in the the oldest run at the level.
     std::ifstream file(file_location, std::ios::binary);
-
     if (!file.is_open())
-        throw std::runtime_error("Unable to open file for writing");
+        throw std::runtime_error("Unable to open file for loading");
 
     Entry_t entry;
     std::vector<Entry_t> buffer;

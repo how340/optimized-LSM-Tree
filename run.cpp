@@ -111,6 +111,8 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point,
 // TODO: this function can definitely be reformatted. Probably implement a
 // function called page search.
 std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper) {
+  std::thread::id this_id = std::this_thread::get_id(); // Get the current thread ID
+  std::cout << "Thread ID: " << this_id << " working..." << std::endl;
   std::vector<Entry_t> ret;
   std::ifstream file(file_location, std::ios::binary);
   size_t read_size;

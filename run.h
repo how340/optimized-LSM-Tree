@@ -6,6 +6,7 @@
 
 #include "key_value.h"
 #include "bloom.h"
+#include "lib/ThreadPool.h"
 
 class Run {
     // The two search assistant elements are stored at the LSM level. Thus, these elements just need to be pointers. 
