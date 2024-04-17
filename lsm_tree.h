@@ -54,8 +54,16 @@ class LSM_Tree
 
     Level_Node *root;
 
-    // evaluation stat variables.
+    // evaluation stat variables. PUT operator
     std::chrono::duration<double> accumulated_time;
+    std::chrono::duration<double> merge_accumulated_time;
+    std::chrono::duration<double> merge_update_accumulated_time;
+    std::chrono::duration<double> merge_del_accumulated_time;
+    // GET
+    std::chrono::duration<double> get_accumulated_time;
+    std::chrono::duration<double> get_disk_accumulated_time;
+    // Range 
+    std::chrono::duration<double> range_accumulated_time;
 
   public:
     LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads);

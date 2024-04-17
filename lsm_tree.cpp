@@ -33,7 +33,12 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
 
     if (insert_result == -1)
     {
+        auto start2 = std::chrono::high_resolution_clock::now();
         buffer = LSM_Tree::merge(cur);
+        auto stop2 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> merge_duration = stop2 - start2;
+        merge_accumulated_time += merge_duration;
+
         Run merged_run = create_run(buffer);
         cur->run_storage.push_back(merged_run);
 
@@ -43,9 +48,8 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
     }
     // Stop measuring time
     auto stop = std::chrono::high_resolution_clock::now();
-
-    // Calculate the duration and accumulate it
     std::chrono::duration<double> duration = stop - start;
+
     accumulated_time += duration;
 }
 
@@ -67,18 +71,20 @@ void LSM_Tree::put(Entry_t entry)
  */
 std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
 {
+    auto start0 = std::chrono::high_resolution_clock::now();
     std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
 
     if (in_mem_result)
     { // check memory buffer first.
         if (in_mem_result->del)
         {
-            std::cout << "not found (deleted)" << std::endl;
+            //std::cout << "not found (deleted)" << std::endl;
             return nullptr;
         }
-        std::cout << "found in memory: " << in_mem_result->val << std::endl;
+            //std::cout << "found in memory: " << in_mem_result->val << std::endl;
         return in_mem_result;
     }
+
 
     std::vector<std::future<std::unique_ptr<Entry_t>>> futures;
 
@@ -109,9 +115,10 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
         return nullptr;
     };
 
+    auto start1 = std::chrono::high_resolution_clock::now();
     while (cur)
     {
-        std::cout << "searching_level: " << cur->level << std::endl;
+        //std::cout << "searching_level: " << cur->level << std::endl;
 
         std::vector<std::future<std::unique_ptr<Entry_t>>> futures;
         // start search from the back of the run storage. The latest run contains
@@ -148,6 +155,13 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
 
         cur = cur->next_level;
     }
+    auto stop1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration1 = stop1 - start1;
+    get_disk_accumulated_time += duration1;
+
+    auto stop0 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = stop0 - start0;
+    get_accumulated_time += duration;
 
     return nullptr;
 }
@@ -163,6 +177,8 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
  */
 std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
 {
+    auto start1 = std::chrono::high_resolution_clock::now();
+
     // Linked list to keep track of search results.
     struct Node
     {
@@ -185,7 +201,6 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
         // iterate each level from back to front.
         for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
         {
-            std::cout << "reading level: " << cur->level << std::endl;
             // ret_cur = ret_cur->next;
             futures.push_back(
                 pool.enqueue([=]() -> std::vector<Entry_t> { return rit->range_disk_search(lower, upper); }));
@@ -230,8 +245,12 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
         delete tmp;
     }
 
-    std::cout << "Range search is complete" << std::endl;
+    auto stop1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> range_duration = stop1 - start1;
+    range_accumulated_time += range_duration;
+
     return ret;
+
 }
 /**
  * LSM_Tree
@@ -316,11 +335,15 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
     // reconstruct a full buffer and resolve updates/ deletes
     std::unordered_map<KEY_t, Entry_t> hash_mp;
     std::vector<Entry_t> ret;
-    //add buffer to hashmap first. 
-    for (auto &entry : buffer){
+    // add buffer to hashmap first.
+    for (auto &entry : buffer)
+    {
         hash_mp[entry.key] = entry;
     }
-    // go through merged items. 
+
+    auto start0 = std::chrono::high_resolution_clock::now();
+
+    // go through merged items. This is the optimized verision.
     for (auto &fut : futures)
     {
         std::vector<Entry_t> results = fut.get();
@@ -329,20 +352,28 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
             auto it = hash_mp.find(entry.key);
 
             if (it == hash_mp.end())
-            {
+            { // any entries that come later are older, so we can just ignore.
+              // the caveat of this approach is that the deletes will always sink
+              // to the bottom of the tree. Additional code is needed to address this.
                 hash_mp[entry.key] = entry;
             }
         }
     }
     futures.clear();
-    // convert back to vector and sort. 
+
+    // convert back to vector and sort.
     for (const auto &pair : hash_mp)
     {
         ret.push_back(pair.second);
     }
     std::sort(ret.begin(), ret.end());
+    
+    auto stop0 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> update_duration = stop0 - start0;
+    merge_update_accumulated_time += update_duration;
 
-    // delete outdated files. 
+    // delete outdated files.
+    auto start1 = std::chrono::high_resolution_clock::now();
     Level_Node *del_cur = root;
     while (level_to_delete.size() > 0)
     {
@@ -358,6 +389,9 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
         }
         del_cur = del_cur->next_level;
     }
+    auto stop1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> del_duration = stop1 - start1;
+    merge_del_accumulated_time += del_duration;
 
     return ret;
 }
@@ -656,7 +690,18 @@ std::string LSM_Tree::generateRandomString(size_t length)
 
 void LSM_Tree::print_statistics()
 {
+    // PUT operation
     std::cout << "PUT time: " << accumulated_time.count() * 1000 << "ms" << std::endl;
+    std::cout << "Merge time: " << merge_accumulated_time.count() * 1000 << "ms" << std::endl;
+    std::cout << "Merge update time: " << merge_update_accumulated_time.count() * 1000 << "ms" << std::endl;
+    std::cout << "Merge delete time: " << merge_del_accumulated_time.count() * 1000 << "ms" << std::endl;
+
+    // GET operation
+    std::cout << "GET time: " << get_accumulated_time.count() * 1000 << "ms" << std::endl;
+    std::cout << "GET disk time: " << get_disk_accumulated_time.count() * 1000 << "ms" << std::endl;
+    // Range operation
+
+    // delete is essentially the same as get. 
 }
 
 void LSM_Tree::load_memory()
