@@ -46,3 +46,4 @@ client
 *.sh
 workloads/
 *.txt
+data

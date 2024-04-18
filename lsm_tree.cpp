@@ -78,13 +78,12 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
     { // check memory buffer first.
         if (in_mem_result->del)
         {
-            //std::cout << "not found (deleted)" << std::endl;
+            std::cout << "not found (deleted)" << std::endl;
             return nullptr;
         }
-            //std::cout << "found in memory: " << in_mem_result->val << std::endl;
+        std::cout << "found in memory: " << in_mem_result->val << std::endl;
         return in_mem_result;
     }
-
 
     std::vector<std::future<std::unique_ptr<Entry_t>>> futures;
 
@@ -115,10 +114,9 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
         return nullptr;
     };
 
-    auto start1 = std::chrono::high_resolution_clock::now();
     while (cur)
     {
-        //std::cout << "searching_level: " << cur->level << std::endl;
+        // std::cout << "searching_level: " << cur->level << std::endl;
 
         std::vector<std::future<std::unique_ptr<Entry_t>>> futures;
         // start search from the back of the run storage. The latest run contains
@@ -155,9 +153,6 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
 
         cur = cur->next_level;
     }
-    auto stop1 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration1 = stop1 - start1;
-    get_disk_accumulated_time += duration1;
 
     auto stop0 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = stop0 - start0;
@@ -250,7 +245,6 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
     range_accumulated_time += range_duration;
 
     return ret;
-
 }
 /**
  * LSM_Tree
@@ -289,7 +283,7 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
     std::vector<Entry_t> buffer = in_mem->flush_buffer(); // temp buffer for merging.
 
     // for storing All of the available sub-buffers created.
-    std::vector<std::future<std::vector<Entry_t>>> futures;
+    std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
     std::unordered_set<size_t> level_to_delete;
 
     while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1)
@@ -302,34 +296,24 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
         // naive full tiering merge policy.
         for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
         {
-            futures.push_back(pool.enqueue([=]() -> std::vector<Entry_t> {
-                return load_full_file(rit->get_file_location(), rit->return_fence());
+            futures.push_back(pool.enqueue([=]() -> std::unordered_map<KEY_t, Entry_t> {
+                std::vector<Entry_t> temp_vec = load_full_file(rit->get_file_location(), rit->return_fence());
+                std::unordered_map<KEY_t, Entry_t> temp_mp;
+                for (auto &entry : temp_vec)
+                {
+                    auto it = temp_mp.find(entry.key);
+                    if (it == temp_mp.end())
+                    { // any entries that come later are older, so we can just ignore.
+                      // the caveat of this approach is that the deletes will always sink
+                      // to the bottom of the tree. Additional code is needed to address this.
+                        temp_mp[entry.key] = entry;
+                    }
+                }
+                return temp_mp;
             }));
         }
-
         level_to_delete.insert(cur->level);
-
         cur = cur->next_level;
-        /* ------------------------------------------------ */
-        // this is the sequential processing approach.
-        // // std::cout << cur->level << std::endl;
-        // naive full tiering merge policy.
-        // for (int i = 0; i < cur->run_storage.size(); i++)
-        // {
-        //     std::vector<Entry_t> temp_buffer;
-        //     temp_buffer = load_full_file(cur->run_storage[i].get_file_location(),
-        //     cur->run_storage[i].return_fence()); buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
-        // }
-
-        // // delete current level info and files.
-        // for (int i = 0; i < cur->run_storage.size(); i++)
-        // {
-        //     std::filesystem::path fileToDelete(cur->run_storage[i].get_file_location());
-        //     std::filesystem::remove(fileToDelete);
-        // }
-        // cur->run_storage.clear();
-
-        // cur = cur->next_level;
     }
 
     // reconstruct a full buffer and resolve updates/ deletes
@@ -343,37 +327,23 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
 
     auto start0 = std::chrono::high_resolution_clock::now();
 
-    // go through merged items. This is the optimized verision.
     for (auto &fut : futures)
     {
-        std::vector<Entry_t> results = fut.get();
-        for (auto &entry : results)
-        {
-            auto it = hash_mp.find(entry.key);
-
-            if (it == hash_mp.end())
-            { // any entries that come later are older, so we can just ignore.
-              // the caveat of this approach is that the deletes will always sink
-              // to the bottom of the tree. Additional code is needed to address this.
-                hash_mp[entry.key] = entry;
-            }
-        }
+        std::unordered_map<KEY_t, Entry_t> results = fut.get();
+        // the merge method disgards repeating key from the merged map.
+        hash_mp.merge(results);
     }
+
     futures.clear();
 
-    // convert back to vector and sort.
+    // convert back to vector and sort. - this is about 10% of the cost. So not too bad.
     for (const auto &pair : hash_mp)
     {
         ret.push_back(pair.second);
     }
     std::sort(ret.begin(), ret.end());
-    
-    auto stop0 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> update_duration = stop0 - start0;
-    merge_update_accumulated_time += update_duration;
 
-    // delete outdated files.
-    auto start1 = std::chrono::high_resolution_clock::now();
+    // delete outdated files. - also really small part of cost.
     Level_Node *del_cur = root;
     while (level_to_delete.size() > 0)
     {
@@ -389,9 +359,9 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
         }
         del_cur = del_cur->next_level;
     }
-    auto stop1 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> del_duration = stop1 - start1;
-    merge_del_accumulated_time += del_duration;
+    auto stop0 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> update_duration = stop0 - start0;
+    merge_update_accumulated_time += update_duration;
 
     return ret;
 }
@@ -701,7 +671,7 @@ void LSM_Tree::print_statistics()
     std::cout << "GET disk time: " << get_disk_accumulated_time.count() * 1000 << "ms" << std::endl;
     // Range operation
 
-    // delete is essentially the same as get. 
+    // delete is essentially the same as get.
 }
 
 void LSM_Tree::load_memory()

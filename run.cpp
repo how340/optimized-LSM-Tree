@@ -155,7 +155,7 @@ std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper)
 
     if (starting_left == -1 && starting_right == -1)
     {
-      if (lower < fence_pointers[0] && upper > fence_pointers.back()){
+      if (lower < fence_pointers->at(0) && upper > fence_pointers->back()){
         for (int i = 0; i < fence_pointers->size(); i++)
         {
             // modify read_size base on how much more we can read.

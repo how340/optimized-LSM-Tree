@@ -34,7 +34,7 @@ void command_loop(LSM_Tree *tree)
             std::cin >> key_a >> val;
             if (val < MIN_VAL || val > MAX_VAL)
             {
-                //std::cout << "Could not insert value " << std::to_string(val)<<": out of range." << std::endl;
+                std::cout << "Could not insert value " << std::to_string(val)<<": out of range." << std::endl;
             }
             else
             {
@@ -53,7 +53,7 @@ void command_loop(LSM_Tree *tree)
             auto timer_duration = std::chrono::duration_cast<std::chrono::milliseconds>(timer_e - timer_s);
             totalDuration += timer_duration;
 
-            //std::cout << "total lookup took: " << totalDuration.count() << " milliseconds." << std::endl;
+            std::cout << "total lookup took: " << totalDuration.count() << " milliseconds." << std::endl;
 
             break;
         }
@@ -64,28 +64,28 @@ void command_loop(LSM_Tree *tree)
 
             if (key_a < MIN_VAL || key_a > MAX_VAL)
             {
-                //std::cout << "Could not search value " << std::to_string(key_a)<<": out of range." << std::endl;
+                std::cout << "Could not search value " << std::to_string(key_a)<<": out of range." << std::endl;
             }
             else if (key_b < MIN_VAL || key_b > MAX_VAL)
             {
-                //std::cout << "Could not search value " << std::to_string(key_b)<<": out of range." << std::endl;
+                std::cout << "Could not search value " << std::to_string(key_b)<<": out of range." << std::endl;
             }
             else
             {
                 ret = tree->range(key_a, key_b);
             }
 
-            // for (Entry_t entry : ret)
-            // {
-            //     if (!entry.del)
-            //     {
-            //         std::cout << entry.key << ":" << entry.val << std::endl;
-            //     }
-            //     else
-            //     {
-            //         std::cout << "Not found (deleted)" << std::endl;
-            //     }
-            // }
+            for (Entry_t entry : ret)
+            {
+                if (!entry.del)
+                {
+                    std::cout << entry.key << ":" << entry.val << std::endl;
+                }
+                else
+                {
+                    std::cout << "Not found (deleted)" << std::endl;
+                }
+            }
             break;
         }
         case 'd': { // delete
@@ -194,7 +194,14 @@ int main(int argc, char *argv[])
     else
     {
         int bits_per_entry, level_ratio, buffer_size, mode, threads;
-        std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
+        // std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
+
+        bits_per_entry = 10;
+        level_ratio = 10; 
+        buffer_size = 10000; 
+        mode = 1; 
+        threads = 1; 
+
         lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size,
                                 mode, threads); // 1 mil integer buffer size. MAKING THIS # for testing haha.
     }
