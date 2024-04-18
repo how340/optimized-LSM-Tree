@@ -32,7 +32,7 @@ class LSM_Tree
     ThreadPool pool;
     int buffer_size;
     BufferLevel *in_mem; // Think about destructor here.
-    int bloom_bits_per_entry;
+    float bloom_bits_per_entry;
     int level_ratio;
     // const int SAVE_MEMORY_PAGE_SIZE = 512;
     int mode; // determine whether we run the baseline LSM implementation or
@@ -66,7 +66,7 @@ class LSM_Tree
     std::chrono::duration<double> range_accumulated_time;
 
   public:
-    LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads);
+    LSM_Tree(float bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads);
     ~LSM_Tree();
 
     void put(KEY_t key, VALUE_t val);
@@ -76,7 +76,7 @@ class LSM_Tree
     void del(KEY_t key);
     std::vector<Entry_t> merge(Level_Node *&cur);
 
-    Run create_run(std::vector<Entry_t>);
+    Run create_run(std::vector<Entry_t>, int);
     void create_bloom_filter(BloomFilter *bloom, const std::vector<Entry_t> &vec);
     void save_to_memory(std::string filename, std::vector<KEY_t> *fence_pointer, std::vector<Entry_t> &vec);
 

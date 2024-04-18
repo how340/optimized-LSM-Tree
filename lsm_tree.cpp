@@ -1,6 +1,6 @@
 #include "lsm_tree.h"
 
-LSM_Tree::LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads)
+LSM_Tree::LSM_Tree(float bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads)
     : bloom_bits_per_entry(bits_ratio), level_ratio(level_ratio), buffer_size(buffer_size), mode(mode), pool(threads)
 {
     in_mem = new BufferLevel(buffer_size);
@@ -39,7 +39,7 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
         std::chrono::duration<double> merge_duration = stop2 - start2;
         merge_accumulated_time += merge_duration;
 
-        Run merged_run = create_run(buffer);
+        Run merged_run = create_run(buffer, cur->level);
         cur->run_storage.push_back(merged_run);
 
         // clear buffer and insert again.
@@ -172,24 +172,20 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
  */
 std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
 {
-    auto start1 = std::chrono::high_resolution_clock::now();
+    // for storing All of the available sub-buffers created.
 
-    // Linked list to keep track of search results.
-    struct Node
+    std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
+    std::vector<Entry_t> buffer = in_mem->get_range(lower, upper); // returned vector
+
+    std::unordered_map<KEY_t, Entry_t> hash_mp;
+    std::vector<Entry_t> ret;
+    // add buffer to hashmap first.
+    for (auto &entry : buffer)
     {
-        std::vector<Entry_t> data;
-        Node *next = nullptr;
-    };
-
-    Node *ret_root = new Node;
-    std::vector<Entry_t> ret; // returned vector
-
-    ret_root->data = in_mem->get_range(lower, upper);
-    ret_root->next = new Node;
-    Node *ret_cur = ret_root;
+        hash_mp[entry.key] = entry;
+    }
 
     Level_Node *cur = root;
-    std::vector<std::future<std::vector<Entry_t>>> futures;
 
     while (cur)
     {
@@ -197,52 +193,34 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper)
         for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
         {
             // ret_cur = ret_cur->next;
-            futures.push_back(
-                pool.enqueue([=]() -> std::vector<Entry_t> { return rit->range_disk_search(lower, upper); }));
+            futures.push_back(pool.enqueue([=]() -> std::unordered_map<KEY_t, Entry_t> {
+                std::vector<Entry_t> temp_vec = rit->range_disk_search(lower, upper);
+                std::unordered_map<KEY_t, Entry_t> temp_mp;
+                for (auto &entry : temp_vec)
+                {
+                    auto it = temp_mp.find(entry.key);
+                    if (it == temp_mp.end())
+                    {
+                        temp_mp[entry.key] = entry;
+                    }
+                }
+                return temp_mp;
+            }));
         }
         cur = cur->next_level;
     }
     for (auto &fut : futures)
     {
-        auto result = fut.get();
-        ret_cur->next = new Node;
-        ret_cur = ret_cur->next;
-        ret_cur->data = result;
+        std::unordered_map<KEY_t, Entry_t> results = fut.get();
+        // the merge method disgards repeating key from the merged map.
+        hash_mp.merge(results);
     }
 
-    std::unordered_map<KEY_t, Entry_t> hash_mp;
-    ret_cur = ret_root; // reset current pointer;
-
-    while (ret_cur)
-    {
-        for (Entry_t entry : ret_cur->data)
-        {
-            // Only update if we have not seen this key
-            //  any repeating key down the tree are older values.
-            if (hash_mp.find(entry.key) == hash_mp.end())
-            {
-                hash_mp[entry.key] = entry;
-            }
-        }
-        ret_cur = ret_cur->next;
-    }
+    futures.clear();
     for (const auto &pair : hash_mp)
     {
         ret.push_back(pair.second);
     }
-
-    // need to delete the content of the linked list.
-    ret_cur = ret_root;
-    while (ret_cur)
-    {
-        Node *tmp = ret_cur;
-        ret_cur = ret_cur->next;
-        delete tmp;
-    }
-
-    auto stop1 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> range_duration = stop1 - start1;
-    range_accumulated_time += range_duration;
 
     return ret;
 }
@@ -262,7 +240,8 @@ void LSM_Tree::del(KEY_t key)
     if (del_result == -1) // buffer is full.
     {
         buffer = LSM_Tree::merge(cur);
-        Run merged_run = create_run(buffer);
+        std::cout << cur->level << std::endl;
+        Run merged_run = create_run(buffer, cur->level);
         cur->run_storage.push_back(merged_run);
         // clear buffer and del again.
         in_mem->clear_buffer();
@@ -380,12 +359,23 @@ void LSM_Tree::exit_save()
 }
 
 // create a Run and associated file for a given vector of entries.
-Run LSM_Tree::create_run(std::vector<Entry_t> buffer)
+Run LSM_Tree::create_run(std::vector<Entry_t> buffer, int current_level)
 {
-    // create new bloom, new fence pointer, create new run in next level.
     std::string file_name = generateRandomString(6);
+    float bloom_bits;
+    float cur_FPR; 
+    /*Base on MONKEY, total_bits = -entries*ln(FPR)/(ln(2)^2)*/
+    if (mode == 1)     // optimized version is activated by mode.
+    {          
+        cur_FPR = bloom_bits_per_entry * pow(level_ratio, current_level);
+        bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2)))); // take ceiling to be safe
+    }
+    else
+    {
+        bloom_bits = bloom_bits_per_entry * buffer.size();
+    }
 
-    BloomFilter *bloom = new BloomFilter(bloom_bits_per_entry * buffer.size());
+    BloomFilter *bloom = new BloomFilter(bloom_bits);
     std::vector<KEY_t> *fence = new std::vector<KEY_t>;
 
     LSM_Tree::create_bloom_filter(bloom, buffer);

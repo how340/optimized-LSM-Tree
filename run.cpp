@@ -152,167 +152,61 @@ std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper)
     // std::cout << "reading file: " << file_location
     //           << ". On fence location: " << starting_left << "->"
     //           << starting_right << std::endl;
-
     if (starting_left == -1 && starting_right == -1)
     {
-      if (lower < fence_pointers->at(0) && upper > fence_pointers->back()){
-        for (int i = 0; i < fence_pointers->size(); i++)
+        if (lower < fence_pointers->at(0) && upper > fence_pointers->back())
         {
-            // modify read_size base on how much more we can read.
-            if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize)
-            {
-                read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
-            }
-            else
-            {
-                read_size = LOAD_MEMORY_PAGE_SIZE;
-            }
-
-            // read in del flags: starting * page_size -> begining of page
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
-            uint64_t result;
-            file.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
-            std::bitset<64> del_flag_bitset(result);
-            file.seekg(0, std::ios::beg);
-
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
-
-            int idx = 0;
-            while (read_size > BOOL_BYTE_CNT)
-            { // change into binary search if i have time.
-                file.read(reinterpret_cast<char *>(&entry->key), sizeof(entry->key));
-                file.read(reinterpret_cast<char *>(&entry->val), sizeof(entry->val));
-
-                if (lower <= entry->key && upper >= entry->key)
-                {
-                    entry->del = del_flag_bitset[63 - idx];
-                    ret.push_back(*entry);
-                }
-
-                read_size = read_size - sizeof(entry->key) - sizeof(entry->val);
-                idx++;
-            }
+            starting_left = 0;
+            starting_right = fence_pointers->back();
         }
-      }
+        else
+        {
+            return ret;
+        }
     }
     else if (starting_right == -1)
     {
-        for (int i = starting_left; i < fence_pointers->size(); i++)
-        {
-            // modify read_size base on how much more we can read.
-            if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize)
-            {
-                read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
-            }
-            else
-            {
-                read_size = LOAD_MEMORY_PAGE_SIZE;
-            }
-
-            // read in del flags: starting * page_size -> begining of page
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
-            uint64_t result;
-            file.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
-            std::bitset<64> del_flag_bitset(result);
-            file.seekg(0, std::ios::beg);
-
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
-
-            int idx = 0;
-            while (read_size > BOOL_BYTE_CNT)
-            { // change into binary search if i have time.
-                file.read(reinterpret_cast<char *>(&entry->key), sizeof(entry->key));
-                file.read(reinterpret_cast<char *>(&entry->val), sizeof(entry->val));
-
-                if (lower <= entry->key && upper >= entry->key)
-                {
-                    entry->del = del_flag_bitset[63 - idx];
-                    ret.push_back(*entry);
-                }
-
-                read_size = read_size - sizeof(entry->key) - sizeof(entry->val);
-                idx++;
-            }
-        }
+        starting_right = fence_pointers->back();
     }
     else if (starting_left == -1)
     {
-        for (int i = 0; i <= starting_right; i++)
-        {
-            // modify read_size base on how much more we can read.
-            if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize)
-            {
-                read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
-            }
-            else
-            {
-                read_size = LOAD_MEMORY_PAGE_SIZE;
-            }
-
-            // read in del flags: starting * page_size -> begining of page
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
-            uint64_t result;
-            file.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
-            std::bitset<64> del_flag_bitset(result);
-            file.seekg(0, std::ios::beg);
-
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
-
-            int idx = 0;
-            while (read_size > BOOL_BYTE_CNT)
-            { // change into binary search if i have time.
-                file.read(reinterpret_cast<char *>(&entry->key), sizeof(entry->key));
-                file.read(reinterpret_cast<char *>(&entry->val), sizeof(entry->val));
-
-                if (lower <= entry->key && upper >= entry->key)
-                {
-                    entry->del = del_flag_bitset[63 - idx];
-                    ret.push_back(*entry);
-                }
-
-                read_size = read_size - sizeof(entry->key) - sizeof(entry->val);
-                idx++;
-            }
-        }
+        starting_left = 0;
     }
-    else
+    for (int i = starting_left; i <= starting_right; i++)
     {
-        for (int i = starting_left; i <= starting_right; i++)
+        // modify read_size base on how much more we can read.
+        if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize)
         {
-            // modify read_size base on how much more we can read.
-            if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize)
+            read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
+        }
+        else
+        {
+            read_size = LOAD_MEMORY_PAGE_SIZE;
+        }
+
+        // read in del flags: starting * page_size -> begining of page
+        file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
+        uint64_t result;
+        file.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
+        std::bitset<64> del_flag_bitset(result);
+        file.seekg(0, std::ios::beg);
+
+        file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
+
+        int idx = 0;
+        while (read_size > BOOL_BYTE_CNT)
+        { // change into binary search if i have time.
+            file.read(reinterpret_cast<char *>(&entry->key), sizeof(entry->key));
+            file.read(reinterpret_cast<char *>(&entry->val), sizeof(entry->val));
+
+            if (lower <= entry->key && upper >= entry->key)
             {
-                read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
-            }
-            else
-            {
-                read_size = LOAD_MEMORY_PAGE_SIZE;
+                entry->del = del_flag_bitset[63 - idx];
+                ret.push_back(*entry);
             }
 
-            // read in del flags: starting * page_size -> begining of page
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
-            uint64_t result;
-            file.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
-            std::bitset<64> del_flag_bitset(result);
-            file.seekg(0, std::ios::beg);
-
-            file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
-
-            int idx = 0;
-            while (read_size > BOOL_BYTE_CNT)
-            { // change into binary search if i have time.
-                file.read(reinterpret_cast<char *>(&entry->key), sizeof(entry->key));
-                file.read(reinterpret_cast<char *>(&entry->val), sizeof(entry->val));
-
-                if (lower <= entry->key && upper >= entry->key)
-                {
-                    entry->del = del_flag_bitset[63 - idx];
-                    ret.push_back(*entry);
-                }
-
-                read_size = read_size - sizeof(entry->key) - sizeof(entry->val);
-                idx++;
-            }
+            read_size = read_size - sizeof(entry->key) - sizeof(entry->val);
+            idx++;
         }
     }
     file.close();
