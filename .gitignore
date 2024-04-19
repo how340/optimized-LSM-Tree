@@ -47,3 +47,4 @@ client
 workloads/
 *.txt
 data
+test

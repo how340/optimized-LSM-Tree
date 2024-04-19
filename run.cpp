@@ -19,10 +19,6 @@ Run::Run(std::string file_name, BloomFilter *bloom_filter, std::vector<KEY_t> *f
     fence_pointers = fence;
 }
 
-Run::~Run(void)
-{
-}
-
 bool Run::search_bloom(KEY_t key)
 {
     return bloom->is_set(key);
@@ -65,7 +61,6 @@ int Run::search_fence(KEY_t key)
 }
 
 // read certain bytes from the binary file storages.
-// This decode is not right!!!!!! NEED TO fix here.
 std::unique_ptr<Entry_t> Run::disk_search(int starting_point, size_t bytes_to_read, KEY_t key)
 {
     // std::lock_guard<std::mutex> guard(Run_mutex);
@@ -126,8 +121,6 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point, size_t bytes_to_re
     return nullptr; // return null if we couldn't find the result.
 }
 
-// TODO: Need to implement range_disk_search after updating the file formatting.
-// TODO: this function can definitely be reformatted. Probably implement a
 // function called page search.
 std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper)
 {

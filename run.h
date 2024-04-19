@@ -19,7 +19,7 @@ class Run {
 
 public:
     Run(std::string file_name, BloomFilter* bloom, std::vector<KEY_t>* fence);
-    ~Run();
+    //~Run();
 
     int search_fence(KEY_t key);
     bool search_bloom(KEY_t key);

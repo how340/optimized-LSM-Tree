@@ -68,10 +68,10 @@ void command_loop(LSM_Tree *tree)
                 ret = tree->range(key_a, key_b);
             }
 
-            if (ret.size() > 0)
-            {
-                std::cout << "Range found" << std::endl;
-            }
+            // if (ret.size() > 0)
+            // {
+            //     std::cout << "Range found" << std::endl;
+            // }
 
             // for (Entry_t entry : ret)
             // {
@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
         int level_ratio, buffer_size, mode, threads;
         // std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
 
-        bits_per_entry = 0.001;
+        bits_per_entry = 0.00001;// there is a floating point exception when this value becomes larger than 0.001. 
         level_ratio = 10;
         buffer_size = 10000;
         mode = 1;

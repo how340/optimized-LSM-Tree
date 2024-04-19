@@ -15,6 +15,15 @@ LSM_Tree::~LSM_Tree()
                    // Consider implementing or calling a method here to clean up
                    // other dynamically allocated resources, if any probably want
                    // to delete the tree structure from root recursively.
+
+    // std::cout << "LSM fail";
+    // Level_Node* temp;
+    // while (root){
+    //     temp = root;
+    //     root = root->next_level;
+    //     delete temp;
+    // }
+    // root = nullptr;
 }
 /**
  * LSM_Tree
@@ -81,38 +90,12 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
             std::cout << "not found (deleted)" << std::endl;
             return nullptr;
         }
-        std::cout << "found in memory: " << in_mem_result->val << std::endl;
+        
         return in_mem_result;
     }
 
-    std::vector<std::future<std::unique_ptr<Entry_t>>> futures;
-
     // search in secondary storage.
     Level_Node *cur = root;
-
-    // Define the lambda function to search each run in a level.
-    auto processRun = [](auto rit, const auto &key) -> std::unique_ptr<Entry_t> {
-        std::unique_ptr<Entry_t> entry = nullptr;
-
-        if (rit->search_bloom(key))
-        {
-            int starting_point = rit->search_fence(key);
-
-            if (starting_point != -1)
-            {
-                auto entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
-                if (entry)
-                {
-                    if (entry->del)
-                    {
-                        return nullptr;
-                    }
-                    return entry;
-                }
-            }
-        }
-        return nullptr;
-    };
 
     while (cur)
     {
@@ -124,7 +107,7 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
         int cnt = 0;
         for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend(); ++rit)
         {
-            futures.push_back(pool.enqueue([=]() -> std::unique_ptr<Entry> { return processRun(rit, key); }));
+            futures.push_back(pool.enqueue([=]() -> std::unique_ptr<Entry> { return process_run(rit, key); }));
 
             // sync up after each batch of threads finish task to prevent unecessary future searches.
             if ((cnt + 1) % num_of_threads == 0)
@@ -157,6 +140,37 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key)
     auto stop0 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = stop0 - start0;
     get_accumulated_time += duration;
+
+    return nullptr;
+}
+
+std::unique_ptr<Entry_t> LSM_Tree::process_run(typename std::vector<Run>::reverse_iterator rit, const KEY_t &key)
+{
+
+    std::unique_ptr<Entry_t> entry = nullptr;
+
+    if (rit->search_bloom(key))
+    {
+        int starting_point = rit->search_fence(key);
+        if (starting_point != -1)
+        {
+            entry = rit->disk_search(starting_point, SAVE_MEMORY_PAGE_SIZE, key);
+            if (entry)
+            {
+                if (entry->del)
+                {
+                    return nullptr;
+                }
+                return entry;
+            }
+        }
+
+        { // This scope is to limit the lifetime of the lock guard
+            std::lock_guard<std::mutex> lock(fpHitsMutex);
+            FP_hits++; // Safely modify the shared variable
+            std::cout << key << std::endl;
+        }
+    }
 
     return nullptr;
 }
@@ -240,7 +254,7 @@ void LSM_Tree::del(KEY_t key)
     if (del_result == -1) // buffer is full.
     {
         buffer = LSM_Tree::merge(cur);
-        std::cout << cur->level << std::endl;
+
         Run merged_run = create_run(buffer, cur->level);
         cur->run_storage.push_back(merged_run);
         // clear buffer and del again.
@@ -345,6 +359,13 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *&cur)
     return ret;
 }
 
+// implement a lazy merge approach for the optimized tree
+std::vector<Entry_t> LSM_Tree::partial_merge(LSM_Tree::Level_Node *&cur)
+{
+
+    return std::vector<Entry_t>();
+}
+
 // this function will save the in-memory data and maintain file structure for
 // data persistence.
 void LSM_Tree::exit_save()
@@ -363,10 +384,10 @@ Run LSM_Tree::create_run(std::vector<Entry_t> buffer, int current_level)
 {
     std::string file_name = generateRandomString(6);
     float bloom_bits;
-    float cur_FPR; 
+    float cur_FPR;
     /*Base on MONKEY, total_bits = -entries*ln(FPR)/(ln(2)^2)*/
-    if (mode == 1)     // optimized version is activated by mode.
-    {          
+    if (mode == 1) // optimized version is activated by mode.
+    {
         cur_FPR = bloom_bits_per_entry * pow(level_ratio, current_level);
         bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2)))); // take ceiling to be safe
     }
@@ -659,6 +680,7 @@ void LSM_Tree::print_statistics()
     // GET operation
     std::cout << "GET time: " << get_accumulated_time.count() * 1000 << "ms" << std::endl;
     std::cout << "GET disk time: " << get_disk_accumulated_time.count() * 1000 << "ms" << std::endl;
+    std::cout << "GET FP hit: " << FP_hits << std::endl;
     // Range operation
 
     // delete is essentially the same as get.

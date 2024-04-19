@@ -65,16 +65,26 @@ class LSM_Tree
     // Range 
     std::chrono::duration<double> range_accumulated_time;
 
+    // FPR calculation
+    std::mutex fpHitsMutex; // Mutex to protect FP_hits
+    int FP_hits; 
+
   public:
     LSM_Tree(float bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads);
     ~LSM_Tree();
 
     void put(KEY_t key, VALUE_t val);
     void put(Entry_t entry); // overload for loading saved memory.
+
     std::unique_ptr<Entry_t> get(KEY_t key);
+    std::unique_ptr<Entry_t> process_run(typename std::vector<Run>::reverse_iterator rit, const KEY_t& key);
+
     std::vector<Entry_t> range(KEY_t lower, KEY_t upper);
     void del(KEY_t key);
+
+    // merge policies
     std::vector<Entry_t> merge(Level_Node *&cur);
+    std::vector<Entry_t> partial_merge(LSM_Tree::Level_Node *&cur);
 
     Run create_run(std::vector<Entry_t>, int);
     void create_bloom_filter(BloomFilter *bloom, const std::vector<Entry_t> &vec);
