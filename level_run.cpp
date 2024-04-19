@@ -31,7 +31,8 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
     Node *prev = nullptr, *cur = root;
     Node *front = nullptr, *back = nullptr; // for tracking insert location
 
-    while (cur) // TODO: double check the logic here for boundary issues.
+    std::cout << "leak here 0" << std::endl;
+    while (cur)
     {
         if (cur->lower > left && !front)
         { // find left post
@@ -41,7 +42,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
             }
             else
             {
-                front = cur; // edge case for left smaller than all of the level.
+                front = root; // edge case for left smaller than all of the level.
             }
         }
         if (cur->lower > right && !back)
@@ -50,6 +51,10 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
             {
                 back = cur;
             }
+            else
+            {
+                back = root; // edge case for right smaller than all of levels.
+            }
         }
         prev = cur;
         cur = cur->next;
@@ -57,18 +62,17 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
     // edge case for when either boundary is greater than all of the level.
     if (!front)
     {
-        front = prev;
+        front = nullptr; // prev here would be the last node.
     }
     if (!back)
     {
-        back = prev;
+        back = nullptr;
     }
-    std::cout << "Insert between " << front->lower << " " << back->lower << std::endl;
-
+    std::cout << "leak here 1" << std::endl;
     // find overlapping blocks of files -> then read them in. -- multi-thread here.
     std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
-
-    while (cur != back->next) // is this correct?
+    cur = front;
+    while (cur != back)
     {
         futures.push_back(pool.enqueue([=]() -> std::unordered_map<KEY_t, Entry_t> {
             std::vector<Entry_t> temp_vec = load_full_file(cur->file_location, cur->fence_pointers);
@@ -87,7 +91,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
         }));
         cur = cur->next;
     }
-
+    std::cout << "leak here 2" << std::endl;
     // merge the new and old blocks.
     std::unordered_map<KEY_t, Entry_t> hash_mp;
     for (auto &entry : buffer)
@@ -108,10 +112,89 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
         ret.push_back(pair.second);
     }
     std::sort(ret.begin(), ret.end());
+    std::cout << "leak here 3" << std::endl;
+    Node *start_node = save_to_memory(ret); // create the underlying representation here.
 
     // store back onto disk format. use front and back to find correct insert location.
+    Node *insert_start = nullptr, *start_node_chain_end= nullptr, *to_delete= nullptr, *insert_cur= nullptr;
+    std::cout << "leak here 4" << std::endl;
+    if (front == back)
+    {
+        if (front == root)
+        {
+            if (root->is_empty)
+            { // we have a empty level. Just swap and delete.
+                delete root;
+                root = start_node;
+            }
+            // insert everything in front of the linked list.
+            start_node->next = root;
+            root = start_node;
+        }
+        else if (front == nullptr)
+        {
+            if (root->is_empty)
+            { // this is also the case when you have an empty level
+                root = start_node;
+            }
+            else
+            {
+                // insert everything into the back of linked list.'
+                insert_cur = root;
+                while (insert_cur)
+                {
+                    insert_cur = insert_cur->next;
+                }
+                insert_cur->next = start_node;
+            }
+        }
+        else
+        {
+            std::cout << "Error in finding overlapping regions" << std::endl;
+        }
+    }
+    else
+    {
+        if (root == front) // need to replace root node with new node.
+        {
+            to_delete = root;
+            insert_cur = root;
+            root = start_node;
+        }
+        else
+        {
+            insert_start = root;
+            while (insert_start->next != front)
+            { // go to node before front.
+                insert_start = insert_start->next;
+            }
+            insert_start->next = start_node;
+            to_delete = front; 
+            insert_cur = front;
+        }
 
-    // re-establish the file structure and delete unnecessary files.
+        while (insert_cur->next != back) // find the last node that will be merged
+        {
+            insert_cur = insert_cur->next;
+        }
+        insert_cur->next = nullptr; // cut off the link
+
+        start_node_chain_end = start_node; // find end of inserted linked list.
+        while (start_node_chain_end)
+        {
+            start_node_chain_end = start_node_chain_end->next;
+        }
+        start_node_chain_end->next = back; // relink the list
+    }
+    std::cout << "leak here 5" << std::endl;
+    // delete unnecessary files for house keeping
+
+    while (to_delete)
+    {
+        Node *tmp = to_delete->next;
+        delete to_delete;
+        to_delete = tmp;
+    }
 }
 
 std::vector<Entry_t> Level_Run::load_full_file(std::string file_name, std::vector<KEY_t> &fence_pointers)
@@ -177,8 +260,7 @@ Level_Run::Node *Level_Run::save_to_memory(std::vector<Entry_t> vec)
 
     Entry_t entry;
 
-    Node *chain_start;
-    std::vector<std::future<Node*>> futures;
+    std::vector<std::future<Node *>> futures;
 
     while (block_cnt > 0)
     {
@@ -188,9 +270,8 @@ Level_Run::Node *Level_Run::save_to_memory(std::vector<Entry_t> vec)
         }
         std::vector<Entry_t> block(vec.begin() + vector_partitions_l, vec.begin() + vector_partitions_r);
 
-
-        futures.push_back(pool.enqueue([=]() -> Node* {
-            Node* temp_nd = process_block(block);
+        futures.push_back(pool.enqueue([=]() -> Node * {
+            Node *temp_nd = process_block(block);
 
             return temp_nd;
         }));
@@ -200,10 +281,18 @@ Level_Run::Node *Level_Run::save_to_memory(std::vector<Entry_t> vec)
         block_cnt--;
     }
 
+    Node *chain_start = futures[0].get();
+    Node *chain_cur = chain_start;
+    for (int i = 1; i < futures.size(); i++)
+    {
+        Node *tmp = futures[i].get();
+        chain_cur->next = tmp;
+        chain_cur = chain_cur->next;
+    }
     return chain_start;
 }
 
-Level_Run::Node* Level_Run::process_block(std::vector<Entry_t> block)
+Level_Run::Node *Level_Run::process_block(std::vector<Entry_t> block)
 {
     // set up file output structure.
     std::vector<int> bool_bits;
@@ -214,10 +303,8 @@ Level_Run::Node* Level_Run::process_block(std::vector<Entry_t> block)
     {
         throw std::runtime_error("Unable to open file for writing");
     }
-    // fence pointer and bloom filter. and returned node
-    Node* node = new Node(block.begin()->key,block.end()->key);
-    node->file_location = filename; 
-    BloomFilter* bloom = new BloomFilter(bits_per_entry);
+    // fence pointer and bloom filter
+    BloomFilter *bloom = new BloomFilter(bits_per_entry);
     std::vector<KEY_t> fence_pointers;
 
     for (const auto &entry : block)
@@ -286,12 +373,17 @@ Level_Run::Node* Level_Run::process_block(std::vector<Entry_t> block)
         out.write(reinterpret_cast<const char *>(&result), sizeof(result));
         bool_bits.clear();
     }
-
-    node->bloom = bloom; 
-    node->fence_pointers = fence_pointers;
     out.close();
+    // construct node* for return
+    Node *node = new Node;
+    node->lower = block.begin()->key;
+    node->upper = block.back().key;
+    node->file_location = filename;
+    node->bloom = bloom;
+    node->fence_pointers = fence_pointers;
+    node->is_empty = false;
 
-    return node; 
+    return node;
 }
 
 void Level_Run::print()
@@ -300,7 +392,8 @@ void Level_Run::print()
 
     while (cur)
     {
-        std::cout << cur->lower << " " << cur->upper << std::endl;
+        std::cout <<  "node filename " << cur->file_location << std::endl;
+        std::cout << "file range " << cur->lower << " -> " << cur->upper << std::endl;
         cur = cur->next;
     }
 }

@@ -5,6 +5,7 @@
 #define KEY_VALUE_H
 
 #include <math.h>
+#include <iostream>
 // These values provide upper and lower bounds of key/value pairs that is supported by our system. 
 typedef int32_t KEY_t;
 typedef int32_t VALUE_t;
@@ -33,6 +34,13 @@ struct Entry {
     bool operator<(const Entry& other) const {return key < other.key;}
     bool operator>(const Entry& other) const {return key > other.key;}
 
+    friend std::ostream& operator<<(std::ostream& os, const Entry& entry) {
+    os << "Key: " << entry.key << ", Value: " << entry.val;
+    if (entry.del) {
+        os << " (deleted)";
+    }
+    return os;
+    }
     // //Default constructor
     // Entry(KEY_t key, VALUE_t val, bool del = false) 
     //     : key(key), val(val), del(del)  {};

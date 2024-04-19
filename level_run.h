@@ -8,6 +8,7 @@
 #include <vector>
 #include <chrono>
 #include <random>
+#include <filesystem>
 
 #include "bloom.h"
 #include "key_value.h"
@@ -36,19 +37,14 @@ class Level_Run
         Node *next = nullptr;
         bool is_empty = true;
 
-        // Constructor
-        Node(const KEY_t &lower_bound, const KEY_t &upper_bound, const std::string &fileLoc = "",
-             Node *nextNode = nullptr)
-            : lower(lower_bound), upper(upper_bound), file_location(fileLoc), next(nextNode)
-        {
-            // Initialize fence_pointers if needed
-            // Initialize BloomFilter if it needs specific parameters
-        }
+        ~Node() {
+        delete bloom;  // Delete the BloomFilter object if it exists.
+        bloom = nullptr; // Prevent dangling pointer.
 
-        // Default constructor if needed, can initialize with default KEY_t values if KEY_t is default-constructible
-        Node() : lower(), upper()
-        {
-        } // Ensures lower and upper are default-initialized
+        std::filesystem::path fileToDelete(file_location);
+        std::filesystem::remove(fileToDelete);
+    }
+
     };
 
     Node *root;
@@ -56,19 +52,7 @@ class Level_Run
   public:
     Level_Run(ThreadPool &pool) : pool(pool)
     {
-        root = new Node(1, 3);
-
-        // for testing
-        Node *cur = root;
-
-        cur->next = new Node(5, 10);
-        cur = cur->next;
-
-        cur->next = new Node(12, 15);
-        cur = cur->next;
-
-        cur->next = new Node(20, 25);
-
+        root = new Node;
     }
     // ~Level_Run();
 
