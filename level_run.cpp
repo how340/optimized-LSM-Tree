@@ -50,6 +50,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
             if (prev && prev->lower <= right)
             {
                 back = cur;
+                std::cout << "came here" << std::endl;
             }
             else
             {
@@ -59,15 +60,11 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
         prev = cur;
         cur = cur->next;
     }
-    // edge case for when either boundary is greater than all of the level.
-    if (!front)
-    {
-        front = nullptr; // prev here would be the last node.
+    // check if the last node can be the front node
+    if (prev->upper && front == nullptr){
+        front = prev; 
     }
-    if (!back)
-    {
-        back = nullptr;
-    }
+
     std::cout << "leak here 1" << std::endl;
     // find overlapping blocks of files -> then read them in. -- multi-thread here.
     std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
@@ -118,6 +115,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
     // store back onto disk format. use front and back to find correct insert location.
     Node *insert_start = nullptr, *start_node_chain_end= nullptr, *to_delete= nullptr, *insert_cur= nullptr;
     std::cout << "leak here 4" << std::endl;
+    std::cout << front << " " << back << std::endl;
     if (front == back)
     {
         if (front == root)
@@ -163,6 +161,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
         }
         else
         {
+            std::cout << "going here" << std::endl;
             insert_start = root;
             while (insert_start->next != front)
             { // go to node before front.
@@ -180,11 +179,14 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer)
         insert_cur->next = nullptr; // cut off the link
 
         start_node_chain_end = start_node; // find end of inserted linked list.
-        while (start_node_chain_end)
+        while (start_node_chain_end->next != nullptr)
         {
             start_node_chain_end = start_node_chain_end->next;
         }
-        start_node_chain_end->next = back; // relink the list
+        if (back != nullptr){
+            std::cout << back->lower << std::endl;
+            start_node_chain_end->next = back; // relink the list
+        }
     }
     std::cout << "leak here 5" << std::endl;
     // delete unnecessary files for house keeping
@@ -382,6 +384,7 @@ Level_Run::Node *Level_Run::process_block(std::vector<Entry_t> block)
     node->bloom = bloom;
     node->fence_pointers = fence_pointers;
     node->is_empty = false;
+    node->next = nullptr;
 
     return node;
 }
