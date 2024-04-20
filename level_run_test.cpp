@@ -80,4 +80,28 @@ int main(int argc, char *argv[])
     buffer.clear(); 
     
     test_run.print();
+
+    int size = test_run.return_size(); 
+    std::cout << "current size: " <<size << std::endl;
+
+    std::cout << *(test_run.get(100)) << std::endl; 
+
+    std::cout << *(test_run.get(-200)) << std::endl; 
+
+    if(test_run.get(2000)){
+        std::cout << " found ?"<< std::endl; 
+    } else {
+        std::cout << "Not found"<< std::endl; 
+    }
+    
+    std::vector<Entry_t> range;
+
+    range = test_run.range_search(100, 300);
+    for (Entry_t& entry : range){
+        std::cout << entry << std::endl; 
+    }
+    // test_run.flush(); 
+    // test_run.print(); 
+    // size = test_run.return_size();
+    // std::cout << "current size: " <<size << std::endl;
 }
