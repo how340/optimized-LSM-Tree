@@ -13,6 +13,7 @@ class Run {
     BloomFilter* bloom;
     std::vector<KEY_t>* fence_pointers;
     std::string file_location; // storage location of the stored binary file
+    int current_level; 
 
     const int LOAD_MEMORY_PAGE_SIZE = SAVE_MEMORY_PAGE_SIZE/64 + SAVE_MEMORY_PAGE_SIZE;
     const int BOOL_BYTE_CNT = SAVE_MEMORY_PAGE_SIZE/64;
@@ -31,6 +32,8 @@ public:
     // return pointers to the underlying data structures
     std::vector<KEY_t> return_fence();
     BloomFilter return_bloom();
+    void set_current_level(int lvl){current_level = lvl;};
+    int return_current_level(){return current_level;};
 };
 
 

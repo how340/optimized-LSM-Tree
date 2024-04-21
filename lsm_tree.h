@@ -12,6 +12,7 @@
 
 #include "buffer_level.h"
 #include "key_value.h"
+#include "level_run.h"
 #include "lib/ThreadPool.h"
 #include "run.h"
 
@@ -25,85 +26,107 @@
    current run.
 */
 
-class LSM_Tree
-{
+class LSM_Tree {
+  size_t num_of_threads;
+  ThreadPool pool;
+  BufferLevel* in_mem;  // Think about destructor here.
 
-    size_t num_of_threads;
-    ThreadPool pool;
-    int buffer_size;
-    BufferLevel *in_mem; // Think about destructor here.
-    float bloom_bits_per_entry;
-    int level_ratio;
-    // const int SAVE_MEMORY_PAGE_SIZE = 512;
-    int mode; // determine whether we run the baseline LSM implementation or
-              // optimized version. 0 means optimized version, 1 is un-optimized
+  int buffer_size;
+  float bloom_bits_per_entry;
+  int level_ratio;
+  int lazy_cut_off = 4;
+  int mode;  // determine whether we run the baseline LSM implementation or
+             // optimized version. 0 means optimized version, 1 is un-optimized
 
-    struct Level_node
-    {
-        size_t level;
-        size_t max_num_of_runs;
-        Level_node *next_level; // point to the next_run_tree_node
-        std::vector<Run> run_storage;
+  int total_levels = 1;
+  /******************************************************
+          Struct for storing LSM tree structure
+  ******************************************************/
+  struct Level_Node  // Constructs a level with the tiered strategy
+  {
+    size_t level;
+    size_t max_num_of_runs;
+    Level_Node* next_level;  // point to the next_run_tree_node
+    std::vector<Run> run_storage;
 
-        // Default constructor
-        Level_node(size_t lvl, size_t numRuns, Level_node *nextLvl = nullptr)
-            : level(lvl), max_num_of_runs(numRuns), next_level(nextLvl){};
-    };
+    // Default constructor
+    Level_Node(size_t lvl, size_t numRuns, Level_Node* nextLvl = nullptr)
+        : level(lvl), max_num_of_runs(numRuns), next_level(nextLvl){};
+  };
 
-    typedef struct Level_node Level_Node;
+  struct Leveling_Node  // construct a level with the leveling strategy.
+  {
+    size_t level;
+    Leveling_Node* next_level;  // point to the next_run_tree_node
+    Level_Run* leveled_run;
+  };
 
-    Level_Node *root;
+  Level_Node* root;
+  Leveling_Node* level_root = nullptr;
 
-    // evaluation stat variables. PUT operator
-    std::chrono::duration<double> accumulated_time;
-    std::chrono::duration<double> merge_accumulated_time;
-    std::chrono::duration<double> merge_update_accumulated_time;
-    std::chrono::duration<double> merge_del_accumulated_time;
-    // GET
-    std::chrono::duration<double> get_accumulated_time;
-    std::chrono::duration<double> get_disk_accumulated_time;
-    // Range 
-    std::chrono::duration<double> range_accumulated_time;
+  /******************************************************
+              Evaluation stat variables.
+  ******************************************************/
+  // evaluation stat variables. PUT operator
+  std::chrono::duration<double> accumulated_time;
+  std::chrono::duration<double> merge_accumulated_time;
+  std::chrono::duration<double> merge_update_accumulated_time;
+  std::chrono::duration<double> merge_del_accumulated_time;
+  // GET
+  std::chrono::duration<double> get_accumulated_time;
+  std::chrono::duration<double> get_disk_accumulated_time;
+  // Range
+  std::chrono::duration<double> range_accumulated_time;
 
-    // FPR calculation
-    std::mutex fpHitsMutex; // Mutex to protect FP_hits
-    int FP_hits; 
+  // FPR calculation
+  std::mutex fpHitsMutex;  // Mutex to protect FP_hits
+  int FP_hits;
 
-  public:
-    LSM_Tree(float bits_ratio, size_t level_ratio, size_t buffer_size, int mode, size_t threads);
-    ~LSM_Tree();
+ public:
+  LSM_Tree(float bits_ratio,
+           size_t level_ratio,
+           size_t buffer_size,
+           int mode,
+           size_t threads);
+  ~LSM_Tree();
 
-    void put(KEY_t key, VALUE_t val);
-    void put(Entry_t entry); // overload for loading saved memory.
+  void put(KEY_t key, VALUE_t val);
+  void put(Entry_t entry);  // overload for loading saved memory.
 
-    std::unique_ptr<Entry_t> get(KEY_t key);
-    std::unique_ptr<Entry_t> process_run(typename std::vector<Run>::reverse_iterator rit, const KEY_t& key);
+  std::unique_ptr<Entry_t> get(KEY_t key);
+  std::unique_ptr<Entry_t> process_run(
+      typename std::vector<Run>::reverse_iterator rit,
+      const KEY_t& key);
 
-    std::vector<Entry_t> range(KEY_t lower, KEY_t upper);
-    void del(KEY_t key);
+  std::vector<Entry_t> range(KEY_t lower, KEY_t upper);
+  void del(KEY_t key);
 
-    // merge policies
-    std::vector<Entry_t> merge(Level_Node *&cur);
-    std::vector<Entry_t> partial_merge(LSM_Tree::Level_Node *&cur);
+  // merge policies
+  void merge_policy(Level_Node*& cur);
+  std::unordered_map<KEY_t, Entry_t> merge(Level_Node*& cur);
+  std::unordered_map<KEY_t, Entry_t> partial_merge(Leveling_Node*& cur);
 
-    Run create_run(std::vector<Entry_t>, int);
-    void create_bloom_filter(BloomFilter *bloom, const std::vector<Entry_t> &vec);
-    void save_to_memory(std::string filename, std::vector<KEY_t> *fence_pointer, std::vector<Entry_t> &vec);
+  Run create_run(std::vector<Entry_t>, int);
+  void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec);
+  void save_to_memory(std::string filename,
+                      std::vector<KEY_t>* fence_pointer,
+                      std::vector<Entry_t>& vec);
 
-    // saving files on quit command
-    void exit_save_memory();
-    void level_meta_save();
-    void exit_save();
+  // saving files on quit command
+  void exit_save_memory();
+  void level_meta_save();
+  void exit_save();
 
-    // Loading functions
-    void load_memory();
-    void reconstruct_file_structure(std::ifstream &meta);
-    std::vector<Entry_t> load_full_file(std::string file_location, std::vector<KEY_t> fence_pointers);
+  // Loading functions
+  void load_memory();
+  void reconstruct_file_structure(std::ifstream& meta);
+  std::vector<Entry_t> load_full_file(std::string file_location,
+                                      std::vector<KEY_t> fence_pointers);
 
-    // helper functions
-    void print();
-    std::string generateRandomString(size_t length);
-    void print_statistics(); 
+  // helper functions
+  void print();
+  std::string generateRandomString(size_t length);
+  void print_statistics();
 };
 
 #endif

@@ -93,5 +93,6 @@
         "stdfloat": "cpp",
         "filesystem": "cpp"
     },
-    "C_Cpp.clang_format_fallbackStyle": "Google"
+    "C_Cpp.clang_format_fallbackStyle": "Chromium",
+    "C_Cpp.clang_format_style": "Chromium"
 }

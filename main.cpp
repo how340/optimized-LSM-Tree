@@ -47,7 +47,12 @@ void command_loop(LSM_Tree *tree)
             {
                 std::cout << "Could not search value " << std::to_string(key_a) << ": out of range." << std::endl;
             }
-            tree->get(key_a);
+            std::unique_ptr<Entry> entry = tree->get(key_a);
+            if (entry && !entry->del){
+                std::cout << *entry << std::endl;
+            } else {
+                std::cout << "Not found" << std::endl; 
+            }
             break;
         }
         case 'r': { // range
@@ -73,17 +78,17 @@ void command_loop(LSM_Tree *tree)
             //     std::cout << "Range found" << std::endl;
             // }
 
-            // for (Entry_t entry : ret)
-            // {
-            //     if (!entry.del)
-            //     {
-            //         std::cout << entry.key << ":" << entry.val << std::endl;
-            //     }
-            //     else
-            //     {
-            //         std::cout << "Not found (deleted)" << std::endl;
-            //     }
-            // }
+            for (Entry_t entry : ret)
+            {
+                if (!entry.del)
+                {
+                    std::cout << entry.key << ":" << entry.val << std::endl;
+                }
+                else
+                {
+                    std::cout << "Not found (deleted)" << std::endl;
+                }
+            }
             break;
         }
         case 'd': { // delete
