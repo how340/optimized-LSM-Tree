@@ -7,6 +7,7 @@
 #include "lsm_tree.h"
 #include "run.h"
 #include "sys.h"
+#include "level_run.h"
 
 namespace fs = std::filesystem;
 
@@ -201,8 +202,8 @@ int main(int argc, char *argv[])
         // std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
 
         bits_per_entry = 0.00001;// there is a floating point exception when this value becomes larger than 0.001. 
-        level_ratio = 10;
-        buffer_size = 10000;
+        level_ratio = 3;
+        buffer_size = 100000;
         mode = 1;
         threads = 1;
 

@@ -17,16 +17,14 @@
 class Level_Run {
   ThreadPool& pool;
 
-  const int LOAD_MEMORY_PAGE_SIZE =
-      SAVE_MEMORY_PAGE_SIZE / 64 + SAVE_MEMORY_PAGE_SIZE;
-  const int BOOL_BYTE_CNT = SAVE_MEMORY_PAGE_SIZE / 64;
-  const int BLOCK_SIZE =
-      LOAD_MEMORY_PAGE_SIZE * 20;  // this is quite arbituary for now.
   float bits_per_entry =
       10;  // need to change the LSM tree code to store this as a constant.
 
   int current_size = 0;
-  int max_size;
+  int max_size;  // number of blocks allowed in each level.
+  int current_level;
+  int level_ratio;
+  int buffer_size; 
 
   struct Node {
     BloomFilter* bloom;
@@ -52,7 +50,10 @@ class Level_Run {
   Node* root;
 
  public:
-  Level_Run(ThreadPool& pool) : pool(pool) { root = new Node; }
+  Level_Run(ThreadPool& pool, int max_size, int level, int ratio, int buffer)
+      : pool(pool), max_size(max_size), current_level(level), level_ratio(ratio), buffer_size(buffer) {
+    root = new Node;
+  }
   // ~Level_Run();
 
   // used to insert blocks of data into the existing leveling levels.
@@ -70,7 +71,7 @@ class Level_Run {
 
   // searching in this level; TODO: add the two functions.
   std::unique_ptr<Entry_t> get(KEY_t key);
-  std::vector<Entry_t> range_search(KEY_t lower, KEY_t upper);
+  std::unordered_map<KEY_t, Entry_t> range_search(KEY_t lower, KEY_t upper);
 
   std::unique_ptr<Entry_t> disk_search(KEY_t, std::string, int);
   int search_fence(KEY_t key, std::vector<KEY_t>&);
@@ -80,7 +81,6 @@ class Level_Run {
   std::string generate_file_name(size_t length);
   int return_size();
   int return_max_size();
-
 };
 
 #endif

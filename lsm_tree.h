@@ -31,10 +31,11 @@ class LSM_Tree {
   ThreadPool pool;
   BufferLevel* in_mem;  // Think about destructor here.
 
+  long total; 
   int buffer_size;
   float bloom_bits_per_entry;
   int level_ratio;
-  int lazy_cut_off = 4;
+  int lazy_cut_off = 2;
   int mode;  // determine whether we run the baseline LSM implementation or
              // optimized version. 0 means optimized version, 1 is un-optimized
 
@@ -58,7 +59,7 @@ class LSM_Tree {
   {
     size_t level;
     Leveling_Node* next_level;  // point to the next_run_tree_node
-    Level_Run* leveled_run;
+    Level_Run* leveled_run;// stores the Level_run object. 
   };
 
   Level_Node* root;

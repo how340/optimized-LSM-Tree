@@ -4,7 +4,7 @@
 int main(int argc, char *argv[])
 {
     ThreadPool pool(4);
-    Level_Run test_run(pool);
+    Level_Run test_run(pool, 5);
 
     std::vector<Entry_t> buffer;
     Entry_t entry;
@@ -94,14 +94,14 @@ int main(int argc, char *argv[])
         std::cout << "Not found"<< std::endl; 
     }
     
-    std::vector<Entry_t> range;
+    // std::vector<Entry_t> range;
 
-    range = test_run.range_search(100, 300);
-    for (Entry_t& entry : range){
-        std::cout << entry << std::endl; 
-    }
-    // test_run.flush(); 
-    // test_run.print(); 
-    // size = test_run.return_size();
-    // std::cout << "current size: " <<size << std::endl;
+    // range = test_run.range_search(100, 300);
+    // for (Entry_t& entry : range){
+    //     std::cout << entry << std::endl; 
+    // }
+    test_run.flush(); 
+    test_run.print(); 
+    size = test_run.return_size();
+    std::cout << "current size: " <<size << std::endl;
 }

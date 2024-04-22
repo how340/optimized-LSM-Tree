@@ -8,8 +8,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
   Node *prev = nullptr, *cur = root;
   Node *front = nullptr, *back = nullptr;  // for tracking insert location
 
-  std::cout << "leak here 0" << std::endl;
-  while (cur) {
+  while (cur && !cur->is_empty) {
     if (cur->lower > left && !front) {  // find left post
       if (prev && prev->lower <= left) {
         front = prev;
@@ -20,7 +19,6 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
     if (cur->lower > right && !back) {  // find right post
       if (prev && prev->lower <= right) {
         back = cur;
-        std::cout << "came here" << std::endl;
       } else {
         back = root;  // edge case for right smaller than all of levels.
       }
@@ -29,13 +27,10 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
     cur = cur->next;
   }
   // check if the last node can be the front node
-  if (prev->upper && front == nullptr) {
+  if (prev && !prev->is_empty&& prev->upper < right && front == nullptr) {
     front = prev;
   }
 
-  std::cout << "leak here 1" << std::endl;
-  // find overlapping blocks of files -> then read them in. -- multi-thread
-  // here.
   std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
   cur = front;
   while (cur != back) {
@@ -58,7 +53,6 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
     }));
     cur = cur->next;
   }
-  std::cout << "leak here 2" << std::endl;
   // merge the new and old blocks.
   std::unordered_map<KEY_t, Entry_t> hash_mp;
   for (auto& entry : buffer) {
@@ -76,7 +70,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
     ret.push_back(pair.second);
   }
   std::sort(ret.begin(), ret.end());
-  std::cout << "leak here 3" << std::endl;
+
   Node* start_node =
       save_to_memory(ret);  // create the underlying representation here.
 
@@ -84,8 +78,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
   // location.
   Node *insert_start = nullptr, *start_node_chain_end = nullptr,
        *to_delete = nullptr, *insert_cur = nullptr;
-  std::cout << "leak here 4" << std::endl;
-  std::cout << front << " " << back << std::endl;
+
   if (front == back) {
     if (front == root) {
       if (root->is_empty) {  // we have a empty level. Just swap and delete.
@@ -117,7 +110,6 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
       insert_cur = root;
       root = start_node;
     } else {
-      std::cout << "going here" << std::endl;
       insert_start = root;
       while (insert_start->next != front) {  // go to node before front.
         insert_start = insert_start->next;
@@ -138,11 +130,9 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
       start_node_chain_end = start_node_chain_end->next;
     }
     if (back != nullptr) {
-      std::cout << back->lower << std::endl;
       start_node_chain_end->next = back;  // relink the list
     }
   }
-  std::cout << "leak here 5" << std::endl;
   // delete unnecessary files for house keeping
 
   while (to_delete) {
@@ -156,6 +146,7 @@ std::vector<Entry_t> Level_Run::load_full_file(
     std::string file_name,
     std::vector<KEY_t>& fence_pointers) {
   // read-in the the oldest run at the level.
+
   std::ifstream file(file_name, std::ios::binary);
   if (!file.is_open())
     throw std::runtime_error("Unable to open file for loading");
@@ -203,11 +194,12 @@ std::vector<Entry_t> Level_Run::load_full_file(
 
 // return the first node in the chain that needs to be inserted.
 Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t> vec) {
-  int block_entry_cnt = SAVE_MEMORY_PAGE_SIZE / 16 * 20;
+  // this is causing issue for the system being slow. I think this should be dependent on the level. 
+  // Maybe we should set the number of blocks to be constant, and shift only the size of the number of entries in each block. 
+  int block_entry_cnt = pow(level_ratio, current_level)* buffer_size / max_size + 1; 
   int block_cnt = vec.size() / block_entry_cnt + 1;
-
   int vector_partitions_l = 0;
-  int vector_partitions_r = block_entry_cnt + 1;
+  int vector_partitions_r = block_entry_cnt;
 
   Entry_t entry;
 
@@ -217,17 +209,19 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t> vec) {
     if (vector_partitions_r > vec.size()) {  // keep everything inbound.
       vector_partitions_r = vec.size();
     }
+
     std::vector<Entry_t> block(vec.begin() + vector_partitions_l,
                                vec.begin() + vector_partitions_r);
 
     futures.push_back(pool.enqueue([=]() -> Node* {
-      Node* temp_nd = process_block(block);
+      Node* temp_nd;
+      temp_nd = process_block(block);
 
       return temp_nd;
     }));
     // update loop info.
     vector_partitions_l = vector_partitions_r;
-    vector_partitions_r = vector_partitions_r + block_entry_cnt + 1;
+    vector_partitions_r = vector_partitions_r + block_entry_cnt;
     block_cnt--;
   }
 
@@ -350,7 +344,6 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   std::vector<std::future<std::unordered_map<KEY_t, Entry>>> futures;
   for (int i = blocks_to_flush; i > 0; i--) {
     cur = cur->next;
-    std::cout << cur->file_location << std::endl;
     futures.push_back(pool.enqueue([=]() -> std::unordered_map<KEY_t, Entry> {
       std::vector<Entry_t> temp_vec =
           load_full_file(cur->file_location, cur->fence_pointers);
@@ -491,8 +484,9 @@ int Level_Run::search_fence(KEY_t key, std::vector<KEY_t>& fence_pointers) {
   return -1;  // return -1 if we hit a false positive with bloom filter.
 }
 
-std::vector<Entry_t> Level_Run::range_search(KEY_t lower, KEY_t upper) {
-  std::vector<Entry_t> ret;
+std::unordered_map<KEY_t, Entry_t> Level_Run::range_search(KEY_t lower,
+                                                           KEY_t upper) {
+  std::unordered_map<KEY_t, Entry_t> ret;
   Node* cur = root;
 
   std::vector<std::future<std::vector<Entry_t>>> futures;
@@ -508,7 +502,13 @@ std::vector<Entry_t> Level_Run::range_search(KEY_t lower, KEY_t upper) {
 
   for (auto& fut : futures) {
     std::vector<Entry_t> results = fut.get();
-    ret.insert(ret.end(), results.begin(), results.end());
+
+    for (auto& entry : results) {
+      auto it = ret.find(entry.key);
+      if (it == ret.end()) {
+        ret[entry.key] = entry;
+      }
+    }
   }
 
   futures.clear();
