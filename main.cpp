@@ -17,8 +17,6 @@ void command_loop(LSM_Tree *tree)
     KEY_t key_a, key_b;
     VALUE_t val;
 
-    std::chrono::milliseconds totalDuration(0);
-
     while (std::cin >> command)
     {
         if (command == 'q')
@@ -201,14 +199,14 @@ int main(int argc, char *argv[])
         int level_ratio, buffer_size, mode, threads;
         // std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
 
-        bits_per_entry = 0.00001;// there is a floating point exception when this value becomes larger than 0.001. 
+        bits_per_entry = 0.0001;// there is a floating point exception when this value becomes larger than 0.001. 
         level_ratio = 3;
         buffer_size = 100000;
         mode = 1;
         threads = 1;
 
         lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode,
-                                threads); // 1 mil integer buffer size. MAKING THIS # for testing haha.
+                                threads);
     }
 
     /*

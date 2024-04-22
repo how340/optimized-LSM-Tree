@@ -12,6 +12,13 @@ LSM_Tree::LSM_Tree(float bits_ratio,
       pool(threads) {
   in_mem = new BufferLevel(buffer_size);
   root = new Level_Node{0, level_ratio};
+  if (mode == 1) {
+    level_root = new Leveling_Node;
+
+    level_root->level = lazy_cut_off;
+    level_root->leveled_run =
+        new Level_Run(pool, 10, lazy_cut_off, level_ratio, buffer_size);
+  }
   num_of_threads = threads;
 }
 
@@ -38,7 +45,6 @@ LSM_Tree::~LSM_Tree() {
  * @param  {VALUE_t} val :
  */
 void LSM_Tree::put(KEY_t key, VALUE_t val) {
-  auto start = std::chrono::high_resolution_clock::now();
   int insert_result;
   std::vector<Entry_t> buffer;
   Level_Node* cur = root;
@@ -46,21 +52,12 @@ void LSM_Tree::put(KEY_t key, VALUE_t val) {
   insert_result = in_mem->insert(key, val);
 
   if (insert_result == -1) {
-    // auto start2 = std::chrono::high_resolution_clock::now();
-    merge_policy(cur);
-    // auto stop2 = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> merge_duration = stop2 - start2;
-    // merge_accumulated_time += merge_duration;
+    merge_policy();
 
     // clear buffer and insert again.
     in_mem->clear_buffer();
     in_mem->insert(key, val);
   }
-  // Stop measuring time
-  auto stop = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration = stop - start;
-
-  accumulated_time += duration;
 
   total++;
   if (total % 100000 == 0) {
@@ -84,15 +81,11 @@ void LSM_Tree::put(Entry_t entry) {
  * @return {std::unique_ptr<Entry_t>}  :
  */
 std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
-  auto start0 = std::chrono::high_resolution_clock::now();
   std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
-
+  Level_Node* cur = root; 
   if (in_mem_result) {  // check memory buffer first.
     return in_mem_result;
   }
-
-  // search in secondary storage.
-  Level_Node* cur = root;
 
   while (cur) {
     // std::cout << "searching_level: " << cur->level << std::endl;
@@ -130,17 +123,20 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
     cur = cur->next_level;
   }
 
-  // go down the leveling levels. This will not be triggered if mode is 0.
-  while (level_root) {
-    std::unique_ptr<Entry> entry = level_root->leveled_run->get(key);
-    if (entry) {
-      return entry;
+  if (mode == 1) {
+    // search in secondary storage.
+    Leveling_Node* level_cur = level_root;
+    std::cout << "running this " << std::endl;
+
+    // go down the leveling levels. This will not be triggered if mode is 0.
+    while (level_cur) {
+      std::unique_ptr<Entry> entry = level_cur->leveled_run->get(key);
+      if (entry) {
+        return entry;
+      }
+      level_cur = level_cur ->next_level; 
     }
   }
-
-  auto stop0 = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration = stop0 - start0;
-  get_accumulated_time += duration;
 
   return nullptr;
 }
@@ -160,11 +156,6 @@ std::unique_ptr<Entry_t> LSM_Tree::process_run(
         }
         return entry;
       }
-    }
-
-    {  // This scope is to limit the lifetime of the lock guard
-      std::lock_guard<std::mutex> lock(fpHitsMutex);
-      FP_hits++;  // Safely modify the shared variable
     }
   }
 
@@ -251,7 +242,7 @@ void LSM_Tree::del(KEY_t key) {
 
   if (del_result == -1)  // buffer is full.
   {
-    merge_policy(cur);
+    merge_policy();
     // clear buffer and del again.
     in_mem->clear_buffer();
     in_mem->del(key);
@@ -265,108 +256,141 @@ void LSM_Tree::del(KEY_t key) {
  * @param  {LSM_Tree::Level_Node*} cur :
  * @return {std::vector<Entry_t>}      :
  */
-void LSM_Tree::merge_policy(Level_Node*& cur) {
+void LSM_Tree::merge_policy() {
   std::vector<Entry_t> buffer = in_mem->flush_buffer();
-  std::unordered_map<KEY_t, Entry_t> hash_mp;
-  std::set<int> level_to_delete;
-
+  std::unordered_map<KEY_t, Entry_t> merge_map;
+  // put in_mem content into the buffer.
   for (auto& entry : buffer) {
-    hash_mp[entry.key] = entry;
+    merge_map[entry.key] = entry;
   }
-
+  /************************************************************
+   *                Unoptimized mode
+   *************************************************************/
   if (mode == 0) {
-    lazy_cut_off = total_levels;
-  }
-  // tiered level merge policy
-  while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1 &&
-         cur->level < lazy_cut_off) {
-    // next level doesn't exist.
+    Level_Node* cur = root;
+    std::set<int> level_to_delete;
 
-    // next level is going to be a leveling level.
-    if (!cur->next_level && cur->level == lazy_cut_off - 1) {
-      if (!level_root) {
-        level_root = new Leveling_Node;
-        level_root->level = cur->level + 1;
-        level_root->leveled_run = new Level_Run(
-            pool, 100);  // TODO: figure out what to do with the max_block_cnt.
-        level_root->leveled_run;
-        total_levels++;
-      }
-    }
+    // flush down levels iteratively.
+    while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1) {
+      std::unordered_map<KEY_t, Entry_t> tmp = merge(cur);
+      merge_map.merge(tmp);
 
-    if (!cur->next_level && cur->level != lazy_cut_off - 1) {  // tiered levels
-      cur->next_level = new Level_Node(cur->level + 1, cur->max_num_of_runs);
-      total_levels++;
-    }
-
-    std::unordered_map<KEY_t, Entry_t> tmp = merge(cur);
-    hash_mp.merge(tmp);
-
-    // flag current level for delete.
-    level_to_delete.emplace(cur->level);
-    cur = cur->next_level;
-  }
-
-  Leveling_Node* level_cur = level_root;
-
-  //  merge policy for levelign levels.
-  if (cur == nullptr && mode == 1) {  // only goes here if we reached the end of
-                                      // the tiered levels
-    Leveling_Node* print_cur = level_root;
-
-    while (level_cur->leveled_run->return_size() >
-           level_cur->leveled_run->return_max_size() * 2 / 3) {
-      if (level_cur->next_level == nullptr) {
-        level_cur->next_level = new Leveling_Node;
-        level_cur->next_level->level = level_cur->level + 1;
-        level_root->leveled_run = new Level_Run(pool, 100);
+      if (!cur->next_level) {  // add a tiered level if we don't have a
+                               // following level.
+        cur->next_level = new Level_Node(cur->level + 1, cur->max_num_of_runs);
         total_levels++;
       }
 
-      while (print_cur) {
-        print_cur->leveled_run->print();
-        print_cur = print_cur->next_level;
-      }
-
-      std::unordered_map<KEY_t, Entry_t> tmp = level_cur->leveled_run->flush();
-      hash_mp.merge(tmp);
-      level_cur = level_cur->next_level;
+      // flag current level for delete.
+      level_to_delete.emplace(cur->level);
+      cur = cur->next_level;
     }
-  }
 
-  std::vector<Entry_t> merge_buffer;
-  // convert hash_mp back to vector form.
-  for (const auto& pair : hash_mp) {
-    merge_buffer.push_back(pair.second);
-  }
-  std::sort(merge_buffer.begin(), merge_buffer.end());
-
-  // take a look at mode and decide where to insert the collected vector.
-  if (mode == 0) {
+    // convert hash_mp back to vector form.
+    std::vector<Entry_t> merge_buffer;
+    for (const auto& pair : merge_map) {
+      merge_buffer.push_back(pair.second);
+    }
+    std::sort(merge_buffer.begin(), merge_buffer.end());
+    // push into the new level.
     Run merged_run = create_run(merge_buffer, cur->level);
     cur->run_storage.push_back(merged_run);
-  } else {
-    if (level_root == nullptr) {
+    // remove merged level's in-memory representation and disk files.
+    Level_Node* del_cur = root;
+    while (level_to_delete.size() > 0) {
+      if (level_to_delete.find(del_cur->level) != level_to_delete.end()) {
+        for (int i = 0; i < del_cur->run_storage.size(); i++) {
+          std::filesystem::path fileToDelete(
+              del_cur->run_storage[i].get_file_location());
+          std::filesystem::remove(fileToDelete);
+        }
+        del_cur->run_storage.clear();
+        level_to_delete.erase(del_cur->level);
+      }
+      del_cur = del_cur->next_level;
+    }
+  } else if (mode == 1) {
+    /************************************************************
+     *                Optimized mode
+     *************************************************************/
+    Level_Node* cur = root;
+    Leveling_Node* level_cur = level_root;
+    std::set<int> level_to_delete;
+    int max_level =
+        0;  // this is counter for whether we want to use leveling levels.
+
+    // flush down levels iteratively.
+    while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1) {
+      std::unordered_map<KEY_t, Entry_t> tmp = merge(cur);
+      merge_map.merge(tmp);
+
+      // We add levels as usual, but we won't add new level if we are just below
+      // the cut off.
+      if (!cur->next_level && cur->level != lazy_cut_off - 1) {
+        cur->next_level = new Level_Node(cur->level + 1, cur->max_num_of_runs);
+        total_levels++;
+      }
+
+      // flag current level for delete.
+      level_to_delete.emplace(cur->level);
+      cur = cur->next_level;
+      max_level++;
+    }
+
+    // cur is always nullptr here.
+    if (max_level == lazy_cut_off) {
+      std::cout << "going here" << std::endl;
+      while (level_cur &&
+             level_cur->leveled_run->return_size() >
+                 level_cur->leveled_run->return_max_size() * 2 / 3 - 1) {
+        // create new level if next level doesn't exist.
+        if (!level_cur->next_level) {
+          level_cur->next_level = new Leveling_Node;
+          level_cur->next_level->level = level_cur->level + 1;
+          level_cur->next_level->leveled_run =
+              new Level_Run(pool, 10, lazy_cut_off, level_ratio, buffer_size);
+        }
+        std::cout << "segment 1 " << std::endl;
+        std::unordered_map<KEY_t, Entry_t> tmp = partial_merge(level_cur);
+        merge_map.merge(tmp);
+
+        level_cur = level_cur->next_level;
+      }
+    }
+    std::cout << "segment 2 " << std::endl;
+    // convert hash_mp back to vector form.
+    std::vector<Entry_t> merge_buffer;
+    for (const auto& pair : merge_map) {
+      merge_buffer.push_back(pair.second);
+    }
+    std::sort(merge_buffer.begin(), merge_buffer.end());
+
+    // push the merged vector into different levels depend on whether the
+    // leveling level is needed.
+    if (max_level == lazy_cut_off) {
+      level_cur->leveled_run->insert_block(merge_buffer);
+    } else {
       Run merged_run = create_run(merge_buffer, cur->level);
       cur->run_storage.push_back(merged_run);
-    } else {
-      level_cur->leveled_run->insert_block(merge_buffer);
     }
-  }
-
-  // This should only take care of the deletion for the tiered levels.
-  Level_Node* del_cur = root;
-  while (level_to_delete.size() > 0) {
-    if (level_to_delete.find(del_cur->level) != level_to_delete.end()) {
-      for (int i = 0; i < del_cur->run_storage.size(); i++) {
-        std::filesystem::path fileToDelete(
-            del_cur->run_storage[i].get_file_location());
-        std::filesystem::remove(fileToDelete);
+    std::cout << "segment 3" << std::endl;
+    // Delete tiered node after we are done.
+    Level_Node* del_cur = root;
+    while (level_to_delete.size() > 0) {
+      if (level_to_delete.find(del_cur->level) != level_to_delete.end()) {
+        for (int i = 0; i < del_cur->run_storage.size(); i++) {
+          std::filesystem::path fileToDelete(
+              del_cur->run_storage[i].get_file_location());
+          std::filesystem::remove(fileToDelete);
+        }
+        del_cur->run_storage.clear();
+        level_to_delete.erase(del_cur->level);
       }
-      del_cur->run_storage.clear();
-      level_to_delete.erase(del_cur->level);
+      del_cur = del_cur->next_level;
     }
-    del_cur = del_cur->next_level;
+
+  } else {
+    std::cout << "wrong mode input" << std::endl;
   }
 }
 /**

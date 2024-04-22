@@ -103,7 +103,7 @@ class LSM_Tree {
   void del(KEY_t key);
 
   // merge policies
-  void merge_policy(Level_Node*& cur);
+  void merge_policy();
   std::unordered_map<KEY_t, Entry_t> merge(Level_Node*& cur);
   std::unordered_map<KEY_t, Entry_t> partial_merge(Leveling_Node*& cur);
 

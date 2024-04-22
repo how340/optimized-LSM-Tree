@@ -201,6 +201,7 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t> vec) {
   int vector_partitions_l = 0;
   int vector_partitions_r = block_entry_cnt;
 
+  std::cout << "inserted block cnt: " << block_cnt << std::endl; 
   Entry_t entry;
 
   std::vector<std::future<Node*>> futures;
@@ -328,12 +329,14 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   std::mt19937 eng(rd());
   return_size();  // refresh current size.
   int blocks_to_flush = current_size - max_size * 2 / 3;
-  std::uniform_int_distribution<> distr(0, blocks_to_flush);
+  std::uniform_int_distribution<> distr(0, max_size * 2 / 3);
 
   int start_point = distr(eng);
   int idx = 0;
   Node* cur = root;
-  while (idx < start_point) {
+  
+  // watch the off by one. 
+  while (idx < start_point-1) {
     cur = cur->next;
     idx++;
   }
@@ -381,21 +384,21 @@ std::unique_ptr<Entry_t> Level_Run::get(KEY_t key) {
   std::unique_ptr<Entry_t> ret;
   Node* cur = root;
 
-  if (key < cur->lower) {
-    return nullptr;
-  }
-
   while (cur) {
     if (key >= cur->lower && key <= cur->upper) {
       if (cur->bloom->is_set(key)) {
         // do disk search
+        
         int starting_point = search_fence(key, cur->fence_pointers);
+        std::cout << "looking at: " << cur->file_location << " " << cur->fence_pointers[starting_point]<< std::endl; 
         ret = disk_search(key, cur->file_location, starting_point);
         if (ret) {
           return ret;
         }
         // this is FP here.
       }
+    } else if (key < cur->lower){// we have looked suitable range. 
+      return nullptr; 
     }
 
     cur = cur->next;
