@@ -170,13 +170,7 @@ std::vector<Entry_t> Level_Run::load_full_file(
     file.seekg(0, std::ios::beg);
 
     file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
-    std::vector<char> read_buffer(size);
-    if (!file.read(read_buffer.data(), read_size)) {
-        std::cerr << "Failed to read file." << std::endl;
-        return 1;
-    }
-    file.close();
-    
+
     int idx = 0;
     while (read_size > BOOL_BYTE_CNT) {
       file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
@@ -189,7 +183,7 @@ std::vector<Entry_t> Level_Run::load_full_file(
       idx++;
     }
   }
-  
+  file.close();
   return buffer;
 }
 
