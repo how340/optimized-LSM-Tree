@@ -35,7 +35,7 @@ class LSM_Tree {
   int buffer_size;
   float bloom_bits_per_entry;
   int level_ratio;
-  int lazy_cut_off = 3;
+  int lazy_cut_off = 2;
   int mode;  // determine whether we run the baseline LSM implementation or
              // optimized version. 0 means optimized version, 1 is un-optimized
   int leveling_partitions; 

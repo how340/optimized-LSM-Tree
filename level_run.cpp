@@ -193,11 +193,13 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
   // dependent on the level. Maybe we should set the number of blocks to be
   // constant, and shift only the size of the number of entries in each block.
   int block_entry_cnt =
-      pow(level_ratio, current_level) * buffer_size / max_size + 1;
+      pow(level_ratio, current_level+1) * buffer_size / max_size + 1;
   int block_cnt = vec.size() / block_entry_cnt + 1;
   int vector_partitions_l = 0;
   int vector_partitions_r = block_entry_cnt;
 
+  std::cout << "block_entry_cnt: " << block_entry_cnt << std::endl; 
+  std::cout << "vec size " << vec.size() << std::endl; 
   std::cout << "inserted block cnt: " << block_cnt << std::endl;
   Entry_t entry;
   std::vector<std::future<Node*>> futures;
