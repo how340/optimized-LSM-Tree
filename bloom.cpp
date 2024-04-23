@@ -56,4 +56,7 @@ bool BloomFilter::is_set(KEY_t key) const {
 
 boost::dynamic_bitset<> BloomFilter::return_bitarray(){
     return bitarray;
-}; 
+}
+int BloomFilter::return_bitarray_size() {
+  return bitarray.size();
+};

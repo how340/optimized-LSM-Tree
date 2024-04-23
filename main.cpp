@@ -139,8 +139,8 @@ LSM_Tree *meta_load_save()
     std::string line;
 
     // read in the lsm tree meta data (in first line)
-    int bits_per_entry, level_ratio, buffer_size, mode, threads;
-    std::string a, b, c, d, e;
+    int bits_per_entry, level_ratio, buffer_size, mode, threads, partition;
+    std::string a, b, c, d, e, f;
     if (std::getline(meta, line))
     {
         std::istringstream iss(line);
@@ -153,13 +153,14 @@ LSM_Tree *meta_load_save()
         buffer_size = std::stoi(c);
         mode = std::stoi(d);
         threads = std::stoi(e);
+        partition = std::stoi(f);
     }
     else
     {
         std::cout << "Error reading LSM tree instance meta data" << std::endl;
     }
 
-    LSM_Tree *lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode, threads);
+    LSM_Tree *lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode, threads, partition);
 
     lsm_tree->load_memory();
     lsm_tree->reconstruct_file_structure(meta);
@@ -196,26 +197,34 @@ int main(int argc, char *argv[])
     else
     {
         float bits_per_entry;
-        int level_ratio, buffer_size, mode, threads;
+        int level_ratio, buffer_size, mode, threads, leveling_partition;
         // std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
 
         bits_per_entry = 0.0001;// there is a floating point exception when this value becomes larger than 0.001. 
         level_ratio = 3;
         buffer_size = 100000;
         mode = 1;
-        threads = 1;
+        threads = 8;
+        leveling_partition = 100; 
 
         lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode,
-                                threads);
+                                threads, leveling_partition);
     }
 
     /*
         Testing without command loop.
     */
+auto start = std::chrono::high_resolution_clock::now();
 
     // start time
     command_loop(lsm_tree);
+       auto end = std::chrono::high_resolution_clock::now();
 
+    // Calculate the duration in milliseconds (you can also use microseconds, nanoseconds, etc.)
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    lsm_tree->print(); 
+    // Output the duration
+    std::cout << "Program ran for " << duration.count() << " milliseconds." << std::endl;
     /* ------------------------------------
     delete files for house keeping.
     ------------------------------------ */

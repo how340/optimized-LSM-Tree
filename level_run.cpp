@@ -1,6 +1,6 @@
 #include "level_run.h"
 
-void Level_Run::insert_block(std::vector<Entry_t> buffer) {
+void Level_Run::insert_block(std::vector<Entry_t>& buffer) {
   KEY_t left = buffer[0].key;
   KEY_t right = buffer.back().key;
 
@@ -27,7 +27,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
     cur = cur->next;
   }
   // check if the last node can be the front node
-  if (prev && !prev->is_empty&& prev->upper < right && front == nullptr) {
+  if (prev && !prev->is_empty && prev->upper < right && front == nullptr) {
     front = prev;
   }
 
@@ -40,12 +40,7 @@ void Level_Run::insert_block(std::vector<Entry_t> buffer) {
       std::unordered_map<KEY_t, Entry_t> temp_mp;
       for (auto& entry : temp_vec) {
         auto it = temp_mp.find(entry.key);
-        if (it ==
-            temp_mp
-                .end()) {  // any entries that come later are older, so we can
-                           // just ignore. the caveat of this approach is that
-                           // the deletes will always sink to the bottom of the
-                           // tree. Additional code is needed to address this.
+        if (it == temp_mp.end()) {
           temp_mp[entry.key] = entry;
         }
       }
@@ -175,7 +170,13 @@ std::vector<Entry_t> Level_Run::load_full_file(
     file.seekg(0, std::ios::beg);
 
     file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
-
+    std::vector<char> read_buffer(size);
+    if (!file.read(read_buffer.data(), read_size)) {
+        std::cerr << "Failed to read file." << std::endl;
+        return 1;
+    }
+    file.close();
+    
     int idx = 0;
     while (read_size > BOOL_BYTE_CNT) {
       file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
@@ -188,22 +189,23 @@ std::vector<Entry_t> Level_Run::load_full_file(
       idx++;
     }
   }
-  file.close();
+  
   return buffer;
 }
 
 // return the first node in the chain that needs to be inserted.
-Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t> vec) {
-  // this is causing issue for the system being slow. I think this should be dependent on the level. 
-  // Maybe we should set the number of blocks to be constant, and shift only the size of the number of entries in each block. 
-  int block_entry_cnt = pow(level_ratio, current_level)* buffer_size / max_size + 1; 
+Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
+  // this is causing issue for the system being slow. I think this should be
+  // dependent on the level. Maybe we should set the number of blocks to be
+  // constant, and shift only the size of the number of entries in each block.
+  int block_entry_cnt =
+      pow(level_ratio, current_level) * buffer_size / max_size + 1;
   int block_cnt = vec.size() / block_entry_cnt + 1;
   int vector_partitions_l = 0;
   int vector_partitions_r = block_entry_cnt;
 
-  std::cout << "inserted block cnt: " << block_cnt << std::endl; 
+  std::cout << "inserted block cnt: " << block_cnt << std::endl;
   Entry_t entry;
-
   std::vector<std::future<Node*>> futures;
 
   while (block_cnt > 0) {
@@ -211,12 +213,9 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t> vec) {
       vector_partitions_r = vec.size();
     }
 
-    std::vector<Entry_t> block(vec.begin() + vector_partitions_l,
-                               vec.begin() + vector_partitions_r);
-
-    futures.push_back(pool.enqueue([=]() -> Node* {
+    futures.push_back(pool.enqueue([&vec, vector_partitions_l, vector_partitions_r, this]() -> Node* {
       Node* temp_nd;
-      temp_nd = process_block(block);
+      temp_nd = process_block(vec, vector_partitions_l, vector_partitions_r);
 
       return temp_nd;
     }));
@@ -233,10 +232,13 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t> vec) {
     chain_cur->next = tmp;
     chain_cur = chain_cur->next;
   }
+
   return chain_start;
 }
 
-Level_Run::Node* Level_Run::process_block(std::vector<Entry_t> block) {
+Level_Run::Node* Level_Run::process_block(const std::vector<Entry_t>& vec,
+                                          int l,
+                                          int r) {
   // set up file output structure.
   std::vector<int> bool_bits;
   int memory_cnt = 0;
@@ -246,20 +248,24 @@ Level_Run::Node* Level_Run::process_block(std::vector<Entry_t> block) {
     throw std::runtime_error("Unable to open file for writing");
   }
   // fence pointer and bloom filter
-  BloomFilter* bloom = new BloomFilter(bits_per_entry);
+  BloomFilter* bloom = new BloomFilter(bits_per_entry * (r-l));
   std::vector<KEY_t> fence_pointers;
 
-  for (const auto& entry : block) {  // go through all entries.
-    bool_bits.push_back(entry.del ? 1 : 0);
-    bloom->set(entry.key);
+  auto start = vec.begin() + l;
+  auto end = vec.begin() + r; // if there is a bug here, adding 1 to this is probably the solution.
+
+  for (auto entry = start; entry != end; ++entry) {  // go through all entries.
+    
+    bool_bits.push_back(entry->del ? 1 : 0);
+    bloom->set(entry->key);
 
     if (memory_cnt == 0) {
-      fence_pointers.push_back(entry.key);
+      fence_pointers.push_back(entry->key);
     }
-    out.write(reinterpret_cast<const char*>(&entry.key), sizeof(entry.key));
-    out.write(reinterpret_cast<const char*>(&entry.val), sizeof(entry.val));
+    out.write(reinterpret_cast<const char*>(&entry->key), sizeof(entry->key));
+    out.write(reinterpret_cast<const char*>(&entry->val), sizeof(entry->val));
 
-    memory_cnt = sizeof(entry.key) + sizeof(entry.val) + memory_cnt;
+    memory_cnt = sizeof(entry->key) + sizeof(entry->val) + memory_cnt;
 
     // reached page maximum. Append the bool_bits to the back of the page.
     if (memory_cnt == SAVE_MEMORY_PAGE_SIZE) {
@@ -286,13 +292,10 @@ Level_Run::Node* Level_Run::process_block(std::vector<Entry_t> block) {
     }
   }
 
-  fence_pointers.push_back(block.back().key);
+  fence_pointers.push_back(end->key);
 
   if (bool_bits.size() > 0) {
-    while (
-        bool_bits.size() <
-        64)  // if i were to alter page size, need to use a constant for this.
-    {
+    while (bool_bits.size() < 64) {
       int padding = 0;
       bool_bits.push_back(padding);  // pad with zeros
     }
@@ -311,8 +314,8 @@ Level_Run::Node* Level_Run::process_block(std::vector<Entry_t> block) {
   out.close();
   // construct node* for return
   Node* node = new Node;
-  node->lower = block.begin()->key;
-  node->upper = block.back().key;
+  node->lower = start->key;
+  node->upper = end->key;
   node->file_location = filename;
   node->bloom = bloom;
   node->fence_pointers = fence_pointers;
@@ -334,9 +337,9 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   int start_point = distr(eng);
   int idx = 0;
   Node* cur = root;
-  
-  // watch the off by one. 
-  while (idx < start_point-1) {
+
+  // watch the off by one.
+  while (idx < start_point - 1) {
     cur = cur->next;
     idx++;
   }
@@ -345,6 +348,7 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   Node* to_delete = cur->next;
 
   std::vector<std::future<std::unordered_map<KEY_t, Entry>>> futures;
+
   for (int i = blocks_to_flush; i > 0; i--) {
     cur = cur->next;
     futures.push_back(pool.enqueue([=]() -> std::unordered_map<KEY_t, Entry> {
@@ -362,7 +366,7 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   }
 
   front->next = cur->next;
-  cur->next = nullptr;
+  cur->next = nullptr;  // i don't lose a block here right?
 
   std::unordered_map<KEY_t, Entry> ret;
   for (auto& fut : futures) {
@@ -376,7 +380,7 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
     to_delete = tmp;
   }
 
-  futures.clear();
+  // futures.clear();
   return ret;
 }
 
@@ -388,17 +392,17 @@ std::unique_ptr<Entry_t> Level_Run::get(KEY_t key) {
     if (key >= cur->lower && key <= cur->upper) {
       if (cur->bloom->is_set(key)) {
         // do disk search
-        
+
         int starting_point = search_fence(key, cur->fence_pointers);
-        std::cout << "looking at: " << cur->file_location << " " << cur->fence_pointers[starting_point]<< std::endl; 
+
         ret = disk_search(key, cur->file_location, starting_point);
         if (ret) {
           return ret;
         }
         // this is FP here.
       }
-    } else if (key < cur->lower){// we have looked suitable range. 
-      return nullptr; 
+    } else if (key < cur->lower) {  // we have looked suitable range.
+      return nullptr;
     }
 
     cur = cur->next;
@@ -410,8 +414,6 @@ std::unique_ptr<Entry_t> Level_Run::get(KEY_t key) {
 std::unique_ptr<Entry_t> Level_Run::disk_search(KEY_t key,
                                                 std::string file_location,
                                                 int starting_point) {
-  // std::lock_guard<std::mutex> guard(Run_mutex);
-
   auto entry = std::make_unique<Entry_t>();
   size_t read_size;
 
@@ -492,40 +494,34 @@ std::unordered_map<KEY_t, Entry_t> Level_Run::range_search(KEY_t lower,
   std::unordered_map<KEY_t, Entry_t> ret;
   Node* cur = root;
 
-  std::vector<std::future<std::vector<Entry_t>>> futures;
+  std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
   while (cur) {
-    futures.push_back(pool.enqueue([=]() -> std::vector<Entry_t> {
-      std::vector<Entry_t> temp_vec = range_block_search(lower, upper, cur);
+    futures.push_back(pool.enqueue([=]() -> std::unordered_map<KEY_t, Entry_t> {
+      std::unordered_map<KEY_t, Entry_t> tmp =
+          range_block_search(lower, upper, cur);
 
-      return temp_vec;
+      return tmp;
     }));
 
     cur = cur->next;
   }
-
   for (auto& fut : futures) {
-    std::vector<Entry_t> results = fut.get();
+    std::unordered_map<KEY_t, Entry_t> results = fut.get();
 
-    for (auto& entry : results) {
-      auto it = ret.find(entry.key);
-      if (it == ret.end()) {
-        ret[entry.key] = entry;
-      }
-    }
+    ret.merge(results);
   }
-
   futures.clear();
   return ret;
 }
 
 // function called page search.
-std::vector<Entry_t> Level_Run::range_block_search(KEY_t lower,
-                                                   KEY_t upper,
-                                                   Node* cur) {
-  std::vector<Entry_t> ret;
+std::unordered_map<KEY_t, Entry_t> Level_Run::range_block_search(KEY_t lower,
+                                                                 KEY_t upper,
+                                                                 Node* cur) {
+  std::unordered_map<KEY_t, Entry_t> ret;
   std::ifstream file(cur->file_location, std::ios::binary);
   size_t read_size;
-  auto entry = std::make_unique<Entry_t>();
+  Entry_t entry;
 
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open file for reading");
@@ -539,14 +535,11 @@ std::vector<Entry_t> Level_Run::range_block_search(KEY_t lower,
   int starting_left = search_fence(lower, cur->fence_pointers);
   int starting_right = search_fence(upper, cur->fence_pointers);
 
-  // std::cout << "reading file: " << file_location
-  //           << ". On fence location: " << starting_left << "->"
-  //           << starting_right << std::endl;
   if (starting_left == -1 && starting_right == -1) {
     if (lower < cur->fence_pointers.at(0) &&
         upper > cur->fence_pointers.back()) {
       starting_left = 0;
-      starting_right = cur->fence_pointers.back();
+      starting_right = cur->fence_pointers.size() - 1;
     } else {
       return ret;
     }
@@ -576,15 +569,15 @@ std::vector<Entry_t> Level_Run::range_block_search(KEY_t lower,
     int idx = 0;
     while (read_size >
            BOOL_BYTE_CNT) {  // change into binary search if i have time.
-      file.read(reinterpret_cast<char*>(&entry->key), sizeof(entry->key));
-      file.read(reinterpret_cast<char*>(&entry->val), sizeof(entry->val));
+      file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
+      file.read(reinterpret_cast<char*>(&entry.val), sizeof(entry.val));
 
-      if (lower <= entry->key && upper >= entry->key) {
-        entry->del = del_flag_bitset[63 - idx];
-        ret.push_back(*entry);
+      if (lower <= entry.key && upper >= entry.key) {
+        entry.del = del_flag_bitset[63 - idx];
+        ret[entry.key] = entry;
       }
 
-      read_size = read_size - sizeof(entry->key) - sizeof(entry->val);
+      read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
       idx++;
     }
   }

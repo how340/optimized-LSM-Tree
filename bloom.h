@@ -31,6 +31,8 @@ public:
 
     // return copy of bitarray; 
     boost::dynamic_bitset<> return_bitarray(); 
+
+    int return_bitarray_size(); 
 };
 
 #endif

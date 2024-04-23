@@ -4,12 +4,15 @@ LSM_Tree::LSM_Tree(float bits_ratio,
                    size_t level_ratio,
                    size_t buffer_size,
                    int mode,
-                   size_t threads)
+                   size_t threads, 
+                   int partition)
     : bloom_bits_per_entry(bits_ratio),
       level_ratio(level_ratio),
       buffer_size(buffer_size),
       mode(mode),
-      pool(threads) {
+      pool(threads), 
+      leveling_partitions(partition)
+       {
   in_mem = new BufferLevel(buffer_size);
   root = new Level_Node{0, level_ratio};
   if (mode == 1) {
@@ -17,7 +20,7 @@ LSM_Tree::LSM_Tree(float bits_ratio,
 
     level_root->level = lazy_cut_off;
     level_root->leveled_run =
-        new Level_Run(pool, 10, lazy_cut_off, level_ratio, buffer_size);
+        new Level_Run(pool, leveling_partitions, lazy_cut_off, level_ratio, buffer_size);
   }
   num_of_threads = threads;
 }
@@ -82,7 +85,7 @@ void LSM_Tree::put(Entry_t entry) {
  */
 std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
   std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
-  Level_Node* cur = root; 
+  Level_Node* cur = root;
   if (in_mem_result) {  // check memory buffer first.
     return in_mem_result;
   }
@@ -126,15 +129,13 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
   if (mode == 1) {
     // search in secondary storage.
     Leveling_Node* level_cur = level_root;
-    std::cout << "running this " << std::endl;
-
     // go down the leveling levels. This will not be triggered if mode is 0.
     while (level_cur) {
       std::unique_ptr<Entry> entry = level_cur->leveled_run->get(key);
       if (entry) {
         return entry;
       }
-      level_cur = level_cur ->next_level; 
+      level_cur = level_cur->next_level;
     }
   }
 
@@ -174,7 +175,6 @@ std::unique_ptr<Entry_t> LSM_Tree::process_run(
  */
 std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
   // for storing All of the available sub-buffers created.
-
   std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
   std::vector<Entry_t> buffer =
       in_mem->get_range(lower, upper);  // returned vector
@@ -187,7 +187,7 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
   }
 
   Level_Node* cur = root;
-
+  std::cout << "going into tiered levels" << std::endl;
   while (cur) {
     // iterate each level from back to front.
     for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend();
@@ -209,19 +209,26 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
     }
     cur = cur->next_level;
   }
+
   for (auto& fut : futures) {
     std::unordered_map<KEY_t, Entry_t> results = fut.get();
     // the merge method disgards repeating key from the merged map.
     hash_mp.merge(results);
   }
-  Leveling_Node* level_cur = level_root;
-  while (level_cur) {
-    std::unordered_map<KEY_t, Entry_t> tmp =
-        level_cur->leveled_run->range_search(lower, upper);
-    hash_mp.merge(tmp);
+  futures.clear();
+
+  // Going into the leveling levels iff there is a leveling level.
+  if (level_root) {
+    std::cout << "going into leveling levels" << std::endl;
+    Leveling_Node* level_cur = level_root;
+    while (level_cur) {
+      std::unordered_map<KEY_t, Entry_t> tmp =
+          level_cur->leveled_run->range_search(lower, upper);
+      hash_mp.merge(tmp);
+      level_cur = level_cur->next_level;
+    }
   }
 
-  futures.clear();
   for (const auto& pair : hash_mp) {
     ret.push_back(pair.second);
   }
@@ -339,25 +346,23 @@ void LSM_Tree::merge_policy() {
 
     // cur is always nullptr here.
     if (max_level == lazy_cut_off) {
-      std::cout << "going here" << std::endl;
       while (level_cur &&
              level_cur->leveled_run->return_size() >
-                 level_cur->leveled_run->return_max_size() * 2 / 3 - 1) {
+                 level_cur->leveled_run->return_max_size() * 2 / 3) {
         // create new level if next level doesn't exist.
         if (!level_cur->next_level) {
           level_cur->next_level = new Leveling_Node;
           level_cur->next_level->level = level_cur->level + 1;
-          level_cur->next_level->leveled_run =
-              new Level_Run(pool, 10, lazy_cut_off, level_ratio, buffer_size);
+          level_cur->next_level->leveled_run = new Level_Run(
+              pool, leveling_partitions, level_cur->level + 1, level_ratio, buffer_size);
         }
-        std::cout << "segment 1 " << std::endl;
         std::unordered_map<KEY_t, Entry_t> tmp = partial_merge(level_cur);
         merge_map.merge(tmp);
 
         level_cur = level_cur->next_level;
       }
     }
-    std::cout << "segment 2 " << std::endl;
+
     // convert hash_mp back to vector form.
     std::vector<Entry_t> merge_buffer;
     for (const auto& pair : merge_map) {
@@ -373,7 +378,7 @@ void LSM_Tree::merge_policy() {
       Run merged_run = create_run(merge_buffer, cur->level);
       cur->run_storage.push_back(merged_run);
     }
-    std::cout << "segment 3" << std::endl;
+
     // Delete tiered node after we are done.
     Level_Node* del_cur = root;
     while (level_to_delete.size() > 0) {
@@ -414,12 +419,7 @@ std::unordered_map<KEY_t, Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node*& cur) {
       std::unordered_map<KEY_t, Entry_t> temp_mp;
       for (auto& entry : temp_vec) {
         auto it = temp_mp.find(entry.key);
-        if (it ==
-            temp_mp.end()) {  // any entries that come later are older, so we
-                              // can just ignore. the caveat of this approach
-                              // is that the deletes will always sink to the
-                              // bottom of the tree. Additional code is needed
-                              // to address this.
+        if (it == temp_mp.end()) {
           temp_mp[entry.key] = entry;
         }
       }

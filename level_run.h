@@ -57,14 +57,14 @@ class Level_Run {
   // ~Level_Run();
 
   // used to insert blocks of data into the existing leveling levels.
-  void insert_block(std::vector<Entry_t>);
+  void insert_block(std::vector<Entry_t>&);
 
   // methods to load level and insert into table.
   std::vector<Entry_t> load_full_file(
       std::string,
       std::vector<KEY_t>&);  // just need the index in the storage.
-  Node* save_to_memory(std::vector<Entry_t>);
-  Node* process_block(std::vector<Entry_t>);
+  Node* save_to_memory(std::vector<Entry_t>&);
+  Node* process_block(const std::vector<Entry_t>&, int, int);
 
   // Find some blocks to push down for merging
   std::unordered_map<KEY_t, Entry> flush();
@@ -75,7 +75,7 @@ class Level_Run {
 
   std::unique_ptr<Entry_t> disk_search(KEY_t, std::string, int);
   int search_fence(KEY_t key, std::vector<KEY_t>&);
-  std::vector<Entry_t> range_block_search(KEY_t, KEY_t, Node*);
+  std::unordered_map<KEY_t, Entry_t> range_block_search(KEY_t, KEY_t, Node*);
   // helper functions
   void print();
   std::string generate_file_name(size_t length);
