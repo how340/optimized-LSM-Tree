@@ -65,10 +65,10 @@ void LSM_Tree::put(KEY_t key, VALUE_t val) {
     in_mem->insert(key, val);
   }
 
-  total++;
-  if (total % 100000 == 0) {
-    std::cout << "inserted: " << total << std::endl;
-  }
+  // total++;
+  // if (total % 100000 == 0) {
+  //   std::cout << "inserted: " << total << std::endl;
+  // }
 }
 
 // overload for loading memory on boot.

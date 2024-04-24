@@ -17,15 +17,15 @@ output_file="./experiment_results/basic_get_benchmark.txt"
 # Ensure the output file is empty before starting
 > "$output_file"
 
-# Generate dataset for the experiement
-for ((i=15; i<=30; i++))
-do
-    ./workloads/generator --puts $((2**i)) --seed $RANDOM >> ./workloads/workload_${i-15}.txt
-done
+# # Generate dataset for the experiement
+# for ((i=15; i<=30; i++))
+# do
+#     ./workloads/generator --puts $((2**i)) --seed $RANDOM >> ./workloads/workload_$((i-15)).txt
+# done
 
 
 # Loop through each variable
-for bits in bits_per_entry; do 
+for bits in "${bits_per_entry[@]}"; do 
     for level_ratio in "${level_ratios[@]}"; do
         for buffer_size in "${buffer_sizes[@]}"; do
             for mode in "${modes[@]}"; do
@@ -50,9 +50,9 @@ for bits in bits_per_entry; do
                                 # Then, send 'q' to indicate the end of input
                                 (
                                     #std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads >> leveling_partition;
-                                    echo "10 10 1000 0 1 0"  # Send initialization parameters
+                                    echo "$bits $level_ratio $buffer_size $mode $thread $leveling_partition"  # Send initialization parameters
                                     echo ""                 # Mimic pressing "Enter" to finalize initialization
-                                    cat workloads/workload_0.txt  # Send the workload data
+                                    cat workloads/workload_${i}.txt  # Send the workload data
                                     echo q
                                 ) | ./program >> "$output_file"
 
