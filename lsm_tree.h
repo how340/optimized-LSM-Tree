@@ -9,6 +9,8 @@
 #include <random>
 #include <string>
 #include <unordered_map>
+#include <set>
+#include <sstream>
 
 #include "buffer_level.h"
 #include "key_value.h"

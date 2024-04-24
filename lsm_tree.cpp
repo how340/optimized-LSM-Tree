@@ -415,7 +415,7 @@ void LSM_Tree::merge_policy() {
 std::unordered_map<KEY_t, Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node*& cur) {
   // for storing All of the available sub-buffers created.
   std::vector<std::future<std::unordered_map<KEY_t, Entry_t>>> futures;
-  std::unordered_set<size_t> level_to_delete;
+  std::set<size_t> level_to_delete;
 
   // naive full tiering merge policy.
   for (auto rit = cur->run_storage.rbegin(); rit != cur->run_storage.rend();

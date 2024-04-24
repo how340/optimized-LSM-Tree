@@ -4,8 +4,8 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#include <bits/stdc++.h>
 #include <math.h>
+// #include <bits/stdc++.h>
 
 #include <algorithm>
 #include <fstream>
