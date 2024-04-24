@@ -47,3 +47,6 @@ workloads/*.txt
 *.txt
 data
 test
+
+#mac files
+*.DS_store
