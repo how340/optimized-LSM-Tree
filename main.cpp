@@ -144,7 +144,7 @@ LSM_Tree *meta_load_save()
     if (std::getline(meta, line))
     {
         std::istringstream iss(line);
-        if (!(iss >> a >> b >> c >> d >> e))
+        if (!(iss >> a >> b >> c >> d >> e >> f))
         {
             std::cerr << "error loading lsm isntance meta data" << std::endl;
         };
@@ -198,14 +198,16 @@ int main(int argc, char *argv[])
     {
         float bits_per_entry;
         int level_ratio, buffer_size, mode, threads, leveling_partition;
-        // std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads;
-
-        bits_per_entry = 0.0001;// there is a floating point exception when this value becomes larger than 0.001. 
-        level_ratio = 3;
-        buffer_size = 100000;
-        mode = 1;
-        threads = 8;
-        leveling_partition = 100; 
+        std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads >> leveling_partition;
+        /**************************************
+         *  for preset LSM tree initialization. 
+        ***************************************/
+        // bits_per_entry = 0.0001;
+        // level_ratio = 3;
+        // buffer_size = 100000;
+        // mode = 0;
+        // threads = 1;
+        // leveling_partition = 0; 
 
         lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode,
                                 threads, leveling_partition);
@@ -222,9 +224,9 @@ auto start = std::chrono::high_resolution_clock::now();
 
     // Calculate the duration in milliseconds (you can also use microseconds, nanoseconds, etc.)
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    lsm_tree->print(); 
+    // lsm_tree->print(); 
     // Output the duration
-    std::cout << "Program ran for " << duration.count() << " milliseconds." << std::endl;
+    std::cout <<  duration.count() << " milliseconds." << std::endl;
     /* ------------------------------------
     delete files for house keeping.
     ------------------------------------ */

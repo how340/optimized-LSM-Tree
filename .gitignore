@@ -43,8 +43,7 @@ server
 client 
 
 #workload related files 
-*.sh
-workloads/
+workloads/*.txt
 *.txt
 data
 test

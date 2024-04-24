@@ -17,14 +17,14 @@
 class Level_Run {
   ThreadPool& pool;
 
-  float bits_per_entry =
-      10;  // need to change the LSM tree code to store this as a constant.
+  float bits_per_entry;  // need to change the LSM tree code to store this as a
+                         // constant.
 
   int current_size = 0;
   int max_size;  // number of blocks allowed in each level.
   int current_level;
   int level_ratio;
-  int buffer_size; 
+  int buffer_size;
 
   struct Node {
     BloomFilter* bloom;
@@ -50,8 +50,18 @@ class Level_Run {
   Node* root;
 
  public:
-  Level_Run(ThreadPool& pool, int max_size, int level, int ratio, int buffer)
-      : pool(pool), max_size(max_size), current_level(level), level_ratio(ratio), buffer_size(buffer) {
+  Level_Run(ThreadPool& pool,
+            int max_size,
+            int level,
+            int ratio,
+            int buffer,
+            int bits_per_entry)
+      : pool(pool),
+        max_size(max_size),
+        current_level(level),
+        level_ratio(ratio),
+        buffer_size(buffer),
+        bits_per_entry(bits_per_entry) {
     root = new Node;
   }
   // ~Level_Run();

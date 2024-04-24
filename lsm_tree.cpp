@@ -4,23 +4,26 @@ LSM_Tree::LSM_Tree(float bits_ratio,
                    size_t level_ratio,
                    size_t buffer_size,
                    int mode,
-                   size_t threads, 
+                   size_t threads,
                    int partition)
     : bloom_bits_per_entry(bits_ratio),
       level_ratio(level_ratio),
       buffer_size(buffer_size),
       mode(mode),
-      pool(threads), 
-      leveling_partitions(partition)
-       {
+      pool(threads),
+      leveling_partitions(partition) {
   in_mem = new BufferLevel(buffer_size);
   root = new Level_Node{0, level_ratio};
   if (mode == 1) {
     level_root = new Leveling_Node;
 
     level_root->level = lazy_cut_off;
+
+    float cur_FPR = bloom_bits_per_entry * pow(level_ratio, lazy_cut_off);
+    float bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2))));
     level_root->leveled_run =
-        new Level_Run(pool, leveling_partitions, lazy_cut_off, level_ratio, buffer_size);
+        new Level_Run(pool, leveling_partitions, lazy_cut_off, level_ratio,
+                      buffer_size, bloom_bits);
   }
   num_of_threads = threads;
 }
@@ -353,8 +356,12 @@ void LSM_Tree::merge_policy() {
         if (!level_cur->next_level) {
           level_cur->next_level = new Leveling_Node;
           level_cur->next_level->level = level_cur->level + 1;
-          level_cur->next_level->leveled_run = new Level_Run(
-              pool, leveling_partitions, level_cur->level + 1, level_ratio, buffer_size);
+          float cur_FPR =
+              bloom_bits_per_entry * pow(level_ratio, level_cur->level + 1);
+          float bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2))));
+          level_cur->next_level->leveled_run =
+              new Level_Run(pool, leveling_partitions, level_cur->level + 1,
+                            level_ratio, buffer_size, bloom_bits);
         }
         std::unordered_map<KEY_t, Entry_t> tmp = partial_merge(level_cur);
         merge_map.merge(tmp);
