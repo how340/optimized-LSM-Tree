@@ -22,7 +22,7 @@ void command_loop(LSM_Tree *tree)
         if (command == 'q')
         { // Assuming 'q' is the command to quit
             tree->exit_save();
-            tree->print_statistics();
+            //tree->print_statistics();
             break; // Exit the loop
         }
 
@@ -198,16 +198,16 @@ int main(int argc, char *argv[])
     {
         float bits_per_entry;
         int level_ratio, buffer_size, mode, threads, leveling_partition;
-        std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads >> leveling_partition;
+         std::cin >> bits_per_entry >> level_ratio >> buffer_size >> mode >> threads >> leveling_partition;
         /**************************************
          *  for preset LSM tree initialization. 
         ***************************************/
         // bits_per_entry = 0.0001;
         // level_ratio = 3;
-        // buffer_size = 100000;
+        // buffer_size = 10000;
         // mode = 0;
-        // threads = 1;
-        // leveling_partition = 0; 
+        // threads = 8;
+        // leveling_partition = 10; 
 
         lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode,
                                 threads, leveling_partition);

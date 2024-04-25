@@ -329,29 +329,80 @@ void LSM_Tree::merge_policy() {
     int max_level =
         0;  // this is counter for whether we want to use leveling levels.
 
-    // flush down levels iteratively.
-    while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1) {
-      std::unordered_map<KEY_t, Entry_t> tmp = merge(cur);
-      merge_map.merge(tmp);
+    if (further_optimized) {  // This is improvement for the lazy leveling
+                              // approach.
+      while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1) {
+        if (cur->level == lazy_cut_off - 1) {
+          // we only flush down a small section of the run.
+          // we do this early now to insert the accumulated data at the last
+          // tiered level.
+          std::vector<Entry_t> merge_buffer;
+          for (const auto& pair : merge_map) {
+            merge_buffer.push_back(pair.second);
+          }
+          std::sort(merge_buffer.begin(), merge_buffer.end());
+          Run merged_run = create_run(merge_buffer, cur->level);
+          cur->run_storage.push_back(merged_run);
 
-      // We add levels as usual, but we won't add new level if we are just below
-      // the cut off.
-      if (!cur->next_level && cur->level != lazy_cut_off - 1) {
-        cur->next_level = new Level_Node(cur->level + 1, cur->max_num_of_runs);
-        total_levels++;
+          // clean up the merge_mp and replace it with info from the first
+          // run(oldest) on the level
+          merge_map.clear();
+
+          std::vector<Entry_t> temp_vec =
+              load_full_file(cur->run_storage[0].get_file_location(),
+                             cur->run_storage[0].return_fence());
+
+          for (auto& entry : temp_vec) {
+            auto it = merge_map.find(entry.key);
+            if (it == merge_map.end()) {
+              merge_map[entry.key] = entry;
+            }
+          }
+          cur->run_storage.erase(cur->run_storage.begin());
+
+        } else {
+          std::unordered_map<KEY_t, Entry_t> tmp = merge(cur);
+          merge_map.merge(tmp);
+
+          // flag current level for delete.
+          level_to_delete.emplace(cur->level);
+        }
+
+        if (!cur->next_level && cur->level != lazy_cut_off - 1) {
+          cur->next_level =
+              new Level_Node(cur->level + 1, cur->max_num_of_runs);
+          total_levels++;
+        }
+
+        cur = cur->next_level;
+        max_level++;
       }
+    } else {
+      // flush down levels iteratively.
+      while (cur && cur->run_storage.size() == cur->max_num_of_runs - 1) {
+        std::unordered_map<KEY_t, Entry_t> tmp = merge(cur);
+        merge_map.merge(tmp);
 
-      // flag current level for delete.
-      level_to_delete.emplace(cur->level);
-      cur = cur->next_level;
-      max_level++;
+        // We add levels as usual, but we won't add new level if we are just
+        // below the cut off.
+        if (!cur->next_level && cur->level != lazy_cut_off - 1) {
+          cur->next_level =
+              new Level_Node(cur->level + 1, cur->max_num_of_runs);
+          total_levels++;
+        }
+
+        // flag current level for delete.
+        level_to_delete.emplace(cur->level);
+        cur = cur->next_level;
+        max_level++;
+      }
     }
 
     // cur is always nullptr here.
     if (max_level == lazy_cut_off) {
       while (level_cur &&
              level_cur->leveled_run->return_size() >
-                 level_cur->leveled_run->return_max_size() * 2 / 3) {
+                 level_cur->leveled_run->return_max_size() * 9 / 10) {
         // create new level if next level doesn't exist.
         if (!level_cur->next_level) {
           level_cur->next_level = new Leveling_Node;
@@ -381,6 +432,7 @@ void LSM_Tree::merge_policy() {
     // leveling level is needed.
     if (max_level == lazy_cut_off) {
       level_cur->leveled_run->insert_block(merge_buffer);
+      std::cout << "merge_buffer has size " << merge_buffer.size() << std::endl;
     } else {
       Run merged_run = create_run(merge_buffer, cur->level);
       cur->run_storage.push_back(merged_run);
@@ -481,14 +533,8 @@ Run LSM_Tree::create_run(std::vector<Entry_t> buffer, int current_level) {
   float bloom_bits;
   float cur_FPR;
   /*Base on MONKEY, total_bits = -entries*ln(FPR)/(ln(2)^2)*/
-  if (mode == 1)  // optimized version is activated by mode.
-  {
-    cur_FPR = bloom_bits_per_entry * pow(level_ratio, current_level);
-    bloom_bits =
-        ceil(-(log(cur_FPR) / (pow(log(2), 2))));  // take ceiling to be safe
-  } else {
-    bloom_bits = bloom_bits_per_entry * buffer.size();
-  }
+  cur_FPR = bloom_bits_per_entry * pow(level_ratio, current_level);
+  bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2))));
 
   BloomFilter* bloom = new BloomFilter(bloom_bits);
   std::vector<KEY_t>* fence = new std::vector<KEY_t>;

@@ -50,4 +50,4 @@ test
 
 #mac files
 *.DS_store
-program.dSYM/
+*.dSYM/

@@ -20,6 +20,13 @@ Run::Run(std::string file_name,
   fence_pointers = fence;
 }
 
+Run::Run() {
+  delete bloom; 
+  bloom = nullptr; 
+  delete fence_pointers; 
+  fence_pointers = nullptr; 
+}
+
 bool Run::search_bloom(KEY_t key) {
   return bloom->is_set(key);
 }

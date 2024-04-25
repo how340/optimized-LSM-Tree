@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Define the variables
-bits_per_entry=(5 10 20)
-level_ratios=(2 3 5 8 10)
-buffer_sizes=(32768 131072 2097152 16777216)
+bits_per_entry=(0.0001)
+level_ratios=(2 4 6 8 10)
+buffer_sizes=(32768 524288 2097152)
 modes=(0)
 threads=(1 2 4 8)
 leveling_partitions=(0)
@@ -15,13 +15,13 @@ mkdir -p $output_dir
 # Output file location
 output_file="./experiment_results/basic_get_benchmark.txt"
 # Ensure the output file is empty before starting
-> "$output_file"
+#> "$output_file"
 
-# # Generate dataset for the experiement
-# for ((i=15; i<=30; i++))
-# do
-#     ./workloads/generator --puts $((2**i)) --seed $RANDOM >> ./workloads/workload_$((i-15)).txt
-# done
+# Generate dataset for the experiement
+for i in 15 18 21 24 27 30
+do
+    ./workloads/generator --puts $((2**i)) --seed $RANDOM >> ./workloads/workload_$(((i-15)/3)).txt
+done
 
 
 # Loop through each variable
@@ -35,11 +35,11 @@ for bits in "${bits_per_entry[@]}"; do
                         echo "Experiment: Level Ratio=$level_ratio, Buffer Size=$buffer_size, Mode=$mode, Threads=$thread, Leveling Partition=$leveling_partition" >> "$output_file"
 
                         # Repeat each experiment 5 times
-                        for repeat in {1..5}; do
+                        for repeat in {1..3}; do
                             echo "Repeat $repeat" >> "$output_file"
                             
                             # Loop through workload files from workload_0.txt to workload_10.txt
-                            for i in {0..15}; do
+                            for i in {0..5}; do
         
                                 echo "Running workload_${i}.txt" >> "$output_file"
 

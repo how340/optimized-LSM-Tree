@@ -1,9 +1,11 @@
-// g++ -std=c++11 -o server server.cpp -pthread
-#include "lib/httplib.h"
+// g++ -std=c++17 -I /Users/hongkaiwang/opt/boost_1_67_0 -g lsm_tree.cpp
+// level_run.cpp bloom.cpp server.cpp run.cpp sys.cpp -w -o server
 #include <string>
+#include "lib/httplib.h"
 
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 
 #include "buffer_level.h"
@@ -13,195 +15,191 @@
 
 namespace fs = std::filesystem;
 
-void http_command_processor(LSM_Tree *tree)
-{
-    httplib::Server svr;
+std::map<std::string, std::string> client_buffers;
+std::mutex buffer_mutex;
 
-    svr.Post("/command", [&svr,tree](const httplib::Request &req, httplib::Response &res) {
-        std::istringstream iss(req.body);
-        std::string command;
-        KEY_t key_a, key_b;
-        VALUE_t val;
+void process_command(const std::string& client_id,
+                     std::string& buffer,
+                     LSM_Tree* tree,
+                     httplib::Response& res,
+                     httplib::Server& svr) {
+  std::istringstream iss(buffer);
+  std::string command;
+  KEY_t key_a, key_b;
+  VALUE_t val;
 
-        iss >> command;
+  iss >> command;
 
-        if (command == "q") {
-            tree->exit_save();
-            res.set_content("shutdown", "text/plain");  // Special shutdown message
-            svr.stop();
-            return;
+  if (command == "q") {
+    tree->exit_save();
+    res.set_content("shutdown", "text/plain");  // Special shutdown message
+    svr.stop();
+    return;
+  }
+
+  try {
+    if (command == "p") {  // put
+      iss >> key_a >> val;
+      if (val < MIN_VAL || val > MAX_VAL) {
+        die("Could not insert value " + std::to_string(val) +
+            ": out of range.");
+      } else if (key_a < MIN_KEY || key_a > MAX_KEY) {
+        die("Could not insert value " + std::to_string(val) +
+            ": out of range.");
+      } else {
+        tree->put(key_a, val);
+      }
+      tree->put(key_a, val);
+      res.set_content("Put operation successful.", "text/plain");
+    } else if (command == "g") {  // get
+      iss >> key_a;
+      if (key_a < MIN_KEY || key_a > MAX_KEY) {
+        die("Could not insert value " + std::to_string(val) +
+            ": out of range.");
+      }
+      auto value = tree->get(key_a);
+
+      if (!value) {  // value did not return
+        res.set_content("Value not found", "text/plain");
+      } else if (value->del) {
+        res.set_content("Value not found (recently deleted)", "text/plain");
+      } else {
+        res.set_content("Got value: " + std::to_string(value->val),
+                        "text/plain");
+      }
+    } else if (command == "r") {  // range
+      iss >> key_a >> key_b;
+      auto range_values = tree->range(key_a, key_b);
+      std::stringstream ss;
+      if (range_values.size() == 0) {
+        res.set_content("No value within range found", "text/plain");
+      } else {
+        for (const auto& entry : range_values) {
+          ss << entry.key << ":" << entry.val << " ";
         }
-
-        try
-        {
-            if (command == "p")
-            { // put
-                iss >> key_a >> val;
-                if (val < MIN_VAL || val > MAX_VAL)
-                {
-                    die("Could not insert value " + std::to_string(val) + ": out of range.");
-                }
-                else if (key_a < MIN_KEY || key_a > MAX_KEY)
-                {
-                    die("Could not insert value " + std::to_string(val) + ": out of range.");
-                }
-                else
-                {
-                    tree->put(key_a, val);
-                }
-                tree->put(key_a, val);
-                res.set_content("Put operation successful.", "text/plain");
-            }
-            else if (command == "g")
-            { // get
-                iss >> key_a;
-                if (key_a < MIN_KEY || key_a > MAX_KEY)
-                {
-                    die("Could not insert value " + std::to_string(val) + ": out of range.");
-                }
-                auto value = tree->get(key_a);
-
-                if (!value)
-                { // value did not return
-                    res.set_content("Value not found", "text/plain");
-                }
-                else if (value->del)
-                {
-                    res.set_content("Value not found (recently deleted)", "text/plain");
-                }
-                else
-                {
-                    res.set_content("Got value: " + std::to_string(value->val), "text/plain");
-                }
-            }
-            else if (command == "r")
-            { // range
-                iss >> key_a >> key_b;
-                auto range_values = tree->range(key_a, key_b);
-                std::stringstream ss;
-                if (range_values.size() == 0)
-                {
-                    res.set_content("No value within range found", "text/plain");
-                }
-                else
-                {
-                    for (const auto &entry : range_values)
-                    {
-                        ss << entry.key << ":" << entry.val << " ";
-                    }
-                    res.set_content("Range values: " + ss.str(), "text/plain");
-                }
-            }
-            else if (command == "d")
-            { // delete
-                iss >> key_a;
-                tree->del(key_a);
-                res.set_content("Delete operation successful.", "text/plain");
-            }
-            else if (command == "l")
-            { // load
-                std::string file_path;
-                iss >> file_path;
-                std::ifstream file(file_path, std::ios::binary);
-                if (!file)
-                {
-                    throw std::runtime_error("Cannot open file: " + file_path);
-                }
-                while (file.read(reinterpret_cast<char *>(&key_a), sizeof(key_a)) &&
-                       file.read(reinterpret_cast<char *>(&val), sizeof(val)))
-                {
-                    tree->put(key_a, val);
-                }
-                file.close();
-                res.set_content("Data loaded from file.", "text/plain");
-            }
-            else if (command == "s")
-            { // print structure
-                tree->print();
-                res.set_content("Printed tree structure.", "text/plain");
-            }
-            else
-            {
-                throw std::runtime_error("Invalid command.");
-            }
-        }
-        catch (const std::exception &e)
-        {
-            res.status = 400; // Bad Request
-            res.set_content(std::string("Error: ") + e.what(), "text/plain");
-            return;
-        }
-    });
-
-    svr.listen("localhost", 1234);
+        res.set_content("Range values: " + ss.str(), "text/plain");
+      }
+    } else if (command == "d") {  // delete
+      iss >> key_a;
+      tree->del(key_a);
+      res.set_content("Delete operation successful.", "text/plain");
+    } else if (command == "l") {  // load
+      std::string file_path;
+      iss >> file_path;
+      std::ifstream file(file_path, std::ios::binary);
+      if (!file) {
+        throw std::runtime_error("Cannot open file: " + file_path);
+      }
+      while (file.read(reinterpret_cast<char*>(&key_a), sizeof(key_a)) &&
+             file.read(reinterpret_cast<char*>(&val), sizeof(val))) {
+        tree->put(key_a, val);
+      }
+      file.close();
+      res.set_content("Data loaded from file.", "text/plain");
+    } else if (command == "s") {  // print structure
+      tree->print();
+      res.set_content("Printed tree structure.", "text/plain");
+    } else {
+      throw std::runtime_error("Invalid command.");
+    }
+  } catch (const std::exception& e) {
+    res.status = 400;  // Bad Request
+    res.set_content(std::string("Error: ") + e.what(), "text/plain");
+    return;
+  }
 }
 
-// load data on start up.
-LSM_Tree *meta_load_save()
-{
-    std::string meta_data = "lsm_tree_level_meta.txt";
-    std::ifstream meta(meta_data);
+void handle_post_request(const httplib::Request& req,
+                         httplib::Response& res,
+                         LSM_Tree* tree,
+                         httplib::Server& svr) {
+  std::string client_id =
+      req.remote_addr + ":" + std::to_string(req.remote_port);
 
-    if (!meta.is_open())
-    {
-        std::cerr << "Failed to open the meta file." << std::endl;
-    }
+  {
+    std::lock_guard<std::mutex> lock(buffer_mutex);
+    client_buffers[client_id] += req.body;
 
-    std::string line;
+    process_command(client_id, client_buffers[client_id], tree, res, svr);
 
-    // read in the lsm tree meta data (in first line)
-    int bits_per_entry, level_ratio, buffer_size, mode;
-    std::string a, b, c, d;
-    if (std::getline(meta, line))
-    {
-        std::istringstream iss(line);
-        if (!(iss >> a >> b >> c >> d))
-        {
-            std::cerr << "error loading lsm isntance meta data" << std::endl;
-        };
-        bits_per_entry = std::stoi(a);
-        level_ratio = std::stoi(b);
-        buffer_size = std::stoi(c);
-        mode = std::stoi(d);
-    }
-    else
-    {
-        std::cout << "Error reading LSM tree instance meta data" << std::endl;
-    }
+    client_buffers.erase(client_id);
+  }
+}
 
-    LSM_Tree *lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode);
+void http_command_processor(LSM_Tree* tree) {
+  httplib::Server svr;
 
-    lsm_tree->load_memory();
-    lsm_tree->reconstruct_file_structure(meta);
-
-    meta.close();
-    return lsm_tree;
+  svr.Post("/command",
+           [&svr, tree](const httplib::Request& req, httplib::Response& res) {
+             handle_post_request(req, res, tree, svr);
+           });
+  svr.listen("localhost", 1234);
 };
 
-int main()
-{
-    std::string meta_data_path = "lsm_tree_level_meta.txt";
-    std::string memory_data_path = "lsm_tree_memory.dat";
+// load data on start up.
+LSM_Tree* meta_load_save(){
+    // std::string meta_data = "lsm_tree_level_meta.txt";
+    // std::ifstream meta(meta_data);
 
-    LSM_Tree *lsm_tree;
+    // if (!meta.is_open())
+    // {
+    //     std::cerr << "Failed to open the meta file." << std::endl;
+    // }
 
-    if (fs::exists(meta_data_path) && fs::exists(memory_data_path))
-    {
-        std::cout << "All save files are present. Loading data..." << std::endl;
-        lsm_tree = meta_load_save();
-    }
-    else
-    {
-        std::cout << "Some data storage files are missing. Database will overwrite "
-                     "all past data."
-                  << std::endl;
-        lsm_tree = new LSM_Tree(10, 3, 100000,
-                                1); // 1 mil integer buffer size. MAKING THIS # for testing haha.
-    }
+    // std::string line;
 
-    http_command_processor(lsm_tree);
+    // // read in the lsm tree meta data (in first line)
+    // int bits_per_entry, level_ratio, buffer_size, mode;
+    // std::string a, b, c, d;
+    // if (std::getline(meta, line))
+    // {
+    //     std::istringstream iss(line);
+    //     if (!(iss >> a >> b >> c >> d))
+    //     {
+    //         std::cerr << "error loading lsm isntance meta data" << std::endl;
+    //     };
+    //     bits_per_entry = std::stoi(a);
+    //     level_ratio = std::stoi(b);
+    //     buffer_size = std::stoi(c);
+    //     mode = std::stoi(d);
+    // }
+    // else
+    // {
+    //     std::cout << "Error reading LSM tree instance meta data" <<
+    //     std::endl;
+    // }
 
-    delete lsm_tree; 
+    // LSM_Tree *lsm_tree = new LSM_Tree(bits_per_entry, level_ratio,
+    // buffer_size, mode);
 
-    return 0;
+    // lsm_tree->load_memory();
+    // lsm_tree->reconstruct_file_structure(meta);
+
+    // meta.close();
+    // return lsm_tree;
+};
+
+int main() {
+  std::string meta_data_path = "lsm_tree_level_meta.txt";
+  std::string memory_data_path = "lsm_tree_memory.dat";
+
+  LSM_Tree* lsm_tree;
+
+  if (fs::exists(meta_data_path) && fs::exists(memory_data_path)) {
+    std::cout << "All save files are present. Loading data..." << std::endl;
+    lsm_tree = meta_load_save();
+  } else {
+    std::cout << "Some data storage files are missing. Database will overwrite "
+                 "all past data."
+              << std::endl;
+    lsm_tree = new LSM_Tree(
+        0.0001, 3, 100000, 0, 1,
+        0);  // 1 mil integer buffer size. MAKING THIS # for testing haha.
+  }
+
+  http_command_processor(lsm_tree);
+
+  delete lsm_tree;
+
+  return 0;
 }

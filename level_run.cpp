@@ -193,13 +193,13 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
   // dependent on the level. Maybe we should set the number of blocks to be
   // constant, and shift only the size of the number of entries in each block.
   int block_entry_cnt =
-      pow(level_ratio, current_level+1) * buffer_size / max_size + 1;
+      pow(level_ratio, current_level + 1) * buffer_size / max_size + 1;
   int block_cnt = vec.size() / block_entry_cnt + 1;
   int vector_partitions_l = 0;
   int vector_partitions_r = block_entry_cnt;
 
-  std::cout << "block_entry_cnt: " << block_entry_cnt << std::endl; 
-  std::cout << "vec size " << vec.size() << std::endl; 
+  std::cout << "block_entry_cnt: " << block_entry_cnt << std::endl;
+  std::cout << "vec size " << vec.size() << std::endl;
   std::cout << "inserted block cnt: " << block_cnt << std::endl;
   Entry_t entry;
   std::vector<std::future<Node*>> futures;
@@ -209,7 +209,8 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
       vector_partitions_r = vec.size();
     }
 
-    futures.push_back(pool.enqueue([&vec, vector_partitions_l, vector_partitions_r, this]() -> Node* {
+    futures.push_back(pool.enqueue([&vec, vector_partitions_l,
+                                    vector_partitions_r, this]() -> Node* {
       Node* temp_nd;
       temp_nd = process_block(vec, vector_partitions_l, vector_partitions_r);
 
@@ -244,14 +245,16 @@ Level_Run::Node* Level_Run::process_block(const std::vector<Entry_t>& vec,
     throw std::runtime_error("Unable to open file for writing");
   }
   // fence pointer and bloom filter
-  BloomFilter* bloom = new BloomFilter(bits_per_entry * (r-l));
+  BloomFilter* bloom = new BloomFilter(bits_per_entry * (r - l));
   std::vector<KEY_t> fence_pointers;
 
   auto start = vec.begin() + l;
-  auto end = vec.begin() + r; // if there is a bug here, adding 1 to this is probably the solution.
+  auto end =
+      vec.begin() +
+      r;  // if there is a bug here, adding 1 to this is probably the solution.
 
   for (auto entry = start; entry != end; ++entry) {  // go through all entries.
-    
+
     bool_bits.push_back(entry->del ? 1 : 0);
     bloom->set(entry->key);
 
@@ -327,9 +330,12 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   std::random_device rd;
   std::mt19937 eng(rd());
   return_size();  // refresh current size.
-  int blocks_to_flush = current_size - max_size * 2 / 3;
-  std::uniform_int_distribution<> distr(0, max_size * 2 / 3);
+  int blocks_to_flush =
+      current_size - max_size * 9 / 10;  // this division here dictates how much
+                                         // of the level is flushed down. Need to change in LSM_tree.cpp too
+  std::uniform_int_distribution<> distr(0, max_size * 9 / 10);
 
+  std::cout << "flushing: " << blocks_to_flush << std::endl;
   int start_point = distr(eng);
   int idx = 0;
   Node* cur = root;
@@ -337,7 +343,7 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   // watch the off by one.
   while (idx < start_point - 1) {
     cur = cur->next;
-    idx++;
+    idx++; 
   }
 
   Node* front = cur;
@@ -357,25 +363,35 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
           temp[entry.key] = entry;
         }
       }
+      std::cout << temp.size() << std::endl; 
       return temp;
     }));
   }
 
-  front->next = cur->next;
-  cur->next = nullptr;  // i don't lose a block here right?
+  if (cur) {
+    front->next = cur->next;
+    cur->next = nullptr;  // i don't lose a block here right?
+  } else {// if cur is already a nullptr -- reached end of the linked list.
+    front->next = nullptr;
+  }
+
+
 
   std::unordered_map<KEY_t, Entry> ret;
   for (auto& fut : futures) {
-    std::unordered_map<KEY_t, Entry> results = fut.get();
-    ret.merge(results);
-  }
 
+    std::unordered_map<KEY_t, Entry> results = fut.get();
+
+    ret.merge(results);
+
+  }
+    
   while (to_delete) {
     Node* tmp = to_delete->next;
     delete to_delete;
     to_delete = tmp;
   }
-
+    
   // futures.clear();
   return ret;
 }

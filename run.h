@@ -15,12 +15,16 @@ class Run {
     std::string file_location; // storage location of the stored binary file
     int current_level; 
 
-    const int LOAD_MEMORY_PAGE_SIZE = SAVE_MEMORY_PAGE_SIZE/64 + SAVE_MEMORY_PAGE_SIZE;
-    const int BOOL_BYTE_CNT = SAVE_MEMORY_PAGE_SIZE/64;
-
 public:
     Run(std::string file_name, BloomFilter* bloom, std::vector<KEY_t>* fence);
-    //~Run();
+    Run();
+
+    Run(const Run& other) {
+        bloom = other.bloom; 
+        fence_pointers = other.fence_pointers; 
+        file_location = other.file_location;
+        current_level = other.current_level;
+    };
 
     int search_fence(KEY_t key);
     bool search_bloom(KEY_t key);
