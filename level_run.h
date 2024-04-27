@@ -9,6 +9,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <mutex> 
 
 #include "bloom.h"
 #include "key_value.h"
@@ -25,6 +26,8 @@ class Level_Run {
   int current_level;
   int level_ratio;
   int buffer_size;
+
+  float leveling_flush_ratio = 0.9;
 
   struct Node {
     BloomFilter* bloom;

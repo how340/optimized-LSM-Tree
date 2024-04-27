@@ -402,7 +402,7 @@ void LSM_Tree::merge_policy() {
     if (max_level == lazy_cut_off) {
       while (level_cur &&
              level_cur->leveled_run->return_size() >
-                 level_cur->leveled_run->return_max_size() * 9 / 10) {
+                 level_cur->leveled_run->return_max_size() * 2 /3) {
         // create new level if next level doesn't exist.
         if (!level_cur->next_level) {
           level_cur->next_level = new Leveling_Node;
@@ -533,8 +533,10 @@ Run LSM_Tree::create_run(std::vector<Entry_t> buffer, int current_level) {
   float bloom_bits;
   float cur_FPR;
   /*Base on MONKEY, total_bits = -entries*ln(FPR)/(ln(2)^2)*/
+
   cur_FPR = bloom_bits_per_entry * pow(level_ratio, current_level);
-  bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2))));
+  bloom_bits =
+      ceil(-(log(cur_FPR) / (pow(log(2), 2)))); 
 
   BloomFilter* bloom = new BloomFilter(bloom_bits);
   std::vector<KEY_t>* fence = new std::vector<KEY_t>;
@@ -930,19 +932,37 @@ std::vector<Entry_t> LSM_Tree::load_full_file(
     std::bitset<64> del_flag_bitset(result);
     file.seekg(0, std::ios::beg);
 
+    std::vector<char> page_data(read_size);
     file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
-
+    file.read(page_data.data(), read_size);
+    // Need to figure out how to part this in one go. 
+    
     int idx = 0;
-    while (read_size > BOOL_BYTE_CNT) {
-      file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
-      file.read(reinterpret_cast<char*>(&entry.val), sizeof(entry.val));
+    int cnt = 0;
+    while(idx < read_size - BOOL_BYTE_CNT){
+      Entry_t entry; 
+      std::memcpy(&entry.key, &page_data[idx], sizeof(KEY_t));
+      idx += sizeof(KEY_t); 
+      std::memcpy(&entry.val, &page_data[idx], sizeof(VALUE_t));
+      idx += sizeof(KEY_t);
+      entry.del = del_flag_bitset[63 - cnt];
+      cnt ++;
 
-      entry.del = del_flag_bitset[63 - idx];
       buffer.push_back(entry);
-
-      read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
-      idx++;
     }
+    
+
+    // the old way of doing this. 
+    // while (read_size > BOOL_BYTE_CNT) {
+    //   file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
+    //   file.read(reinterpret_cast<char*>(&entry.val), sizeof(entry.val));
+
+    //   entry.del = del_flag_bitset[63 - idx];
+    //   buffer.push_back(entry);
+
+    //   read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
+    //   idx++;
+    // }
   }
   file.close();
   return buffer;

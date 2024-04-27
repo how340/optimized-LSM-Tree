@@ -41,8 +41,12 @@ class LSM_Tree {
   int mode;  // determine whether we run the baseline LSM implementation or
              // optimized version. 0 means optimized version, 1 is un-optimized
   int leveling_partitions; 
-  bool further_optimized = true; 
-  
+
+  // bools to trigger additional optimizations. 
+  bool further_optimized = false; 
+  bool dynamic_level_ratio = false; 
+  float leveling_flush_ratio = 0.9;
+
   int total_levels = 1;
   /******************************************************
           Struct for storing LSM tree structure

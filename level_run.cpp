@@ -198,9 +198,10 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
   int vector_partitions_l = 0;
   int vector_partitions_r = block_entry_cnt;
 
-  std::cout << "block_entry_cnt: " << block_entry_cnt << std::endl;
-  std::cout << "vec size " << vec.size() << std::endl;
-  std::cout << "inserted block cnt: " << block_cnt << std::endl;
+  // std::cout << "block_entry_cnt: " << block_entry_cnt << std::endl;
+  // std::cout << "vec size " << vec.size() << std::endl;
+  // std::cout << "inserted block cnt: " << block_cnt << std::endl;
+
   Entry_t entry;
   std::vector<std::future<Node*>> futures;
 
@@ -331,11 +332,11 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   std::mt19937 eng(rd());
   return_size();  // refresh current size.
   int blocks_to_flush =
-      current_size - max_size * 9 / 10;  // this division here dictates how much
+      current_size - max_size * 2/3;  // this division here dictates how much
                                          // of the level is flushed down. Need to change in LSM_tree.cpp too
-  std::uniform_int_distribution<> distr(0, max_size * 9 / 10);
+  std::uniform_int_distribution<> distr(0, max_size * 2/3);
 
-  std::cout << "flushing: " << blocks_to_flush << std::endl;
+  // std::cout << "flushing: " << blocks_to_flush << std::endl;
   int start_point = distr(eng);
   int idx = 0;
   Node* cur = root;
