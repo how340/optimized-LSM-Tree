@@ -20,13 +20,14 @@
 // tree.
 
 class BufferLevel {
-  std::vector<Entry_t> store;
+  
 
   int max_size;  // memory limit allocated at the buffer level
   int current_size = 0;
 
  public:
   // constructor
+  std::vector<Entry_t> store;
   BufferLevel(int size) : max_size(size) { max_size = size; };
 
   int insert(KEY_t key, VALUE_t val) {
@@ -68,10 +69,12 @@ class BufferLevel {
 
   // search for a key and return value. Update and deletion are done during
   // compaction.
-  std::unique_ptr<Entry_t> get(KEY_t key) {
+  std::unique_ptr<Entry_t> get(KEY_t key, typename std::vector<Entry_t>::reverse_iterator reverse_it, int search_size ) {
     // core intuitation - the last item is the latest value. We report the
     // latest no matter what.
-    for (auto rit = store.rbegin(); rit != store.rend(); ++rit) {
+    auto front = reverse_it + search_size;
+    
+    for (auto rit = reverse_it; rit != front; ++rit) {
       if (rit->key == key) {
         return std::make_unique<Entry_t>(*rit);
       }

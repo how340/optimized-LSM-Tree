@@ -87,12 +87,62 @@ void LSM_Tree::put(Entry_t entry) {
  * @return {std::unique_ptr<Entry_t>}  :
  */
 std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
-  std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
-  Level_Node* cur = root;
-  if (in_mem_result) {  // check memory buffer first.
-    return in_mem_result;
+
+  // use threadpool to look for results in smaller blocks of the buffer.
+  std::vector<std::future<std::unique_ptr<Entry_t>>> mem_futures;
+
+  int mem_cnt = 0;
+  int search_size = 10000;
+  int buffer_size = in_mem->size();
+  typename std::vector<Entry_t>::reverse_iterator back = in_mem->store.rbegin();
+
+  while (buffer_size > 0) {
+    if (buffer_size < search_size){
+      search_size = buffer_size; 
+    }
+      mem_futures.push_back(pool.enqueue([=]() -> std::unique_ptr<Entry> {
+        return in_mem->get(key, back, search_size);
+      }));
+
+    // sync up after each batch of threads finish task to prevent unecessary
+    // future searches.
+    if ((mem_cnt + 1) % num_of_threads == 0) {
+      for (auto& fut : mem_futures) {
+        auto result = fut.get();
+        if (result) {
+
+          return result;
+        }
+      }
+      mem_futures.clear();
+    }
+
+    buffer_size -= search_size;
+    back += search_size;
+    mem_cnt++;
   }
 
+  // check futures for any remaining queued results.
+  for (auto& fut : mem_futures) {
+    auto result = fut.get();
+    if (result) {
+
+      return result;
+    }
+  }
+
+  // This was old single thread approach.
+  // std::unique_ptr<Entry_t> in_mem_result = in_mem->get(key);
+  // if (in_mem_result) {  // check memory buffer first.
+
+  //   auto end = std::chrono::high_resolution_clock::now();
+  //   auto duration =
+  //       std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  //   std::cout << duration.count() << " milliseconds." << std::endl;
+  //   return in_mem_result;
+  // }
+
+  Level_Node* cur = root;
   while (cur) {
     // std::cout << "searching_level: " << cur->level << std::endl;
 
@@ -111,21 +161,23 @@ std::unique_ptr<Entry_t> LSM_Tree::get(KEY_t key) {
         for (auto& fut : futures) {
           auto result = fut.get();
           if (result) {
+            
             return result;
           }
         }
         futures.clear();
       }
+      cnt++;
     }
     // check futures for any remaining queued results.
     for (auto& fut : futures) {
       auto result = fut.get();
       if (result) {
+
         return result;
       }
     }
     futures.clear();
-
     cur = cur->next_level;
   }
 
@@ -402,7 +454,7 @@ void LSM_Tree::merge_policy() {
     if (max_level == lazy_cut_off) {
       while (level_cur &&
              level_cur->leveled_run->return_size() >
-                 level_cur->leveled_run->return_max_size() * 2 /3) {
+                 level_cur->leveled_run->return_max_size() * 2 / 3) {
         // create new level if next level doesn't exist.
         if (!level_cur->next_level) {
           level_cur->next_level = new Leveling_Node;
@@ -535,8 +587,7 @@ Run LSM_Tree::create_run(std::vector<Entry_t> buffer, int current_level) {
   /*Base on MONKEY, total_bits = -entries*ln(FPR)/(ln(2)^2)*/
 
   cur_FPR = bloom_bits_per_entry * pow(level_ratio, current_level);
-  bloom_bits =
-      ceil(-(log(cur_FPR) / (pow(log(2), 2)))); 
+  bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2))));
 
   BloomFilter* bloom = new BloomFilter(bloom_bits);
   std::vector<KEY_t>* fence = new std::vector<KEY_t>;
@@ -729,7 +780,8 @@ void LSM_Tree::level_meta_save() {
 
   // write meta data to the LSM tree first.
   meta << bloom_bits_per_entry << " " << level_ratio << " " << buffer_size
-       << " " << mode << " " << num_of_threads << "\n";
+       << " " << mode << " " << num_of_threads << " " << leveling_partitions
+       << "\n";
 
   while (cur) {
     // for each level: write current level, level limit, run count, then
@@ -784,23 +836,25 @@ std::string LSM_Tree::generateRandomString(size_t length) {
 }
 
 void LSM_Tree::print_statistics() {
-  // PUT operation
-  std::cout << "PUT time: " << accumulated_time.count() * 1000 << "ms"
-            << std::endl;
-  std::cout << "Merge time: " << merge_accumulated_time.count() * 1000 << "ms"
-            << std::endl;
-  std::cout << "Merge update time: "
-            << merge_update_accumulated_time.count() * 1000 << "ms"
-            << std::endl;
-  std::cout << "Merge delete time: "
-            << merge_del_accumulated_time.count() * 1000 << "ms" << std::endl;
+  // // PUT operation
+  // std::cout << "PUT time: " << accumulated_time.count() * 1000 << "ms"
+  //           << std::endl;
+  // std::cout << "Merge time: " << merge_accumulated_time.count() * 1000 <<
+  // "ms"
+  //           << std::endl;
+  // std::cout << "Merge update time: "
+  //           << merge_update_accumulated_time.count() * 1000 << "ms"
+  //           << std::endl;
+  // std::cout << "Merge delete time: "
+  //           << merge_del_accumulated_time.count() * 1000 << "ms" <<
+  //           std::endl;
 
   // GET operation
   std::cout << "GET time: " << get_accumulated_time.count() * 1000 << "ms"
             << std::endl;
-  std::cout << "GET disk time: " << get_disk_accumulated_time.count() * 1000
-            << "ms" << std::endl;
-  std::cout << "GET FP hit: " << FP_hits << std::endl;
+  // std::cout << "GET disk time: " << get_disk_accumulated_time.count() * 1000
+  //           << "ms" << std::endl;
+  // std::cout << "GET FP hit: " << FP_hits << std::endl;
   // Range operation
 
   // delete is essentially the same as get.
@@ -861,7 +915,7 @@ void LSM_Tree::reconstruct_file_structure(std::ifstream& meta) {
   Level_Node* cur = root;
 
   while (std::getline(meta, line)) {
-    std::cout << line << std::endl;
+    // std::cout << line << std::endl;
     std::istringstream iss(line);
 
     if (std::isdigit(line[0])) {
@@ -899,7 +953,7 @@ void LSM_Tree::reconstruct_file_structure(std::ifstream& meta) {
       bloom.close();
     }
   }
-  std::cout << "meta load complete!" << std::endl;
+  // std::cout << "meta load complete!" << std::endl;
 }
 
 std::vector<Entry_t> LSM_Tree::load_full_file(
@@ -935,24 +989,23 @@ std::vector<Entry_t> LSM_Tree::load_full_file(
     std::vector<char> page_data(read_size);
     file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
     file.read(page_data.data(), read_size);
-    // Need to figure out how to part this in one go. 
-    
+    // Need to figure out how to part this in one go.
+
     int idx = 0;
     int cnt = 0;
-    while(idx < read_size - BOOL_BYTE_CNT){
-      Entry_t entry; 
+    while (idx < read_size - BOOL_BYTE_CNT) {
+      Entry_t entry;
       std::memcpy(&entry.key, &page_data[idx], sizeof(KEY_t));
-      idx += sizeof(KEY_t); 
+      idx += sizeof(KEY_t);
       std::memcpy(&entry.val, &page_data[idx], sizeof(VALUE_t));
       idx += sizeof(KEY_t);
       entry.del = del_flag_bitset[63 - cnt];
-      cnt ++;
+      cnt++;
 
       buffer.push_back(entry);
     }
-    
 
-    // the old way of doing this. 
+    // the old way of doing this.
     // while (read_size > BOOL_BYTE_CNT) {
     //   file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
     //   file.read(reinterpret_cast<char*>(&entry.val), sizeof(entry.val));

@@ -19,7 +19,7 @@ void command_loop(LSM_Tree* tree) {
   while (std::cin >> command) {
     if (command == 'q') {  // Assuming 'q' is the command to quit
       tree->exit_save();
-      // tree->print_statistics();
+      //tree->print_statistics();
       break;  // Exit the loop
     }
 
@@ -41,11 +41,11 @@ void command_loop(LSM_Tree* tree) {
                     << ": out of range." << std::endl;
         }
         std::unique_ptr<Entry> entry = tree->get(key_a);
-        if (entry && !entry->del) {
-          std::cout << *entry << std::endl;
-        } else {
-          std::cout << "Not found" << std::endl;
-        }
+        // if (entry && !entry->del) {
+        //   std::cout << *entry << std::endl;
+        // } else {
+        //   std::cout << "Not found" << std::endl;
+        // }
         break;
       }
       case 'r': {  // range
@@ -145,7 +145,7 @@ LSM_Tree* meta_load_save() {
 
   lsm_tree->load_memory();
   lsm_tree->reconstruct_file_structure(meta);
-
+  // std::cout << "done with meta read" << std::endl; 
   meta.close();
   return lsm_tree;
 };
@@ -170,7 +170,7 @@ int main(int argc, char* argv[]) {
   LSM_Tree* lsm_tree;
 
   if (fs::exists(meta_data_path) && fs::exists(memory_data_path)) {
-    std::cout << "All save files are present. Loading data..." << std::endl;
+    //std::cout << "All save files are present. Loading data..." << std::endl;
     lsm_tree = meta_load_save();
   } else {
     float bits_per_entry;
@@ -203,7 +203,7 @@ int main(int argc, char* argv[]) {
   // Calculate the duration in milliseconds (you can also use microseconds,
   // nanoseconds, etc.)
   auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   // lsm_tree->print();
   // Output the duration
   std::cout << duration.count() << " milliseconds." << std::endl;
@@ -213,15 +213,15 @@ int main(int argc, char* argv[]) {
 
   fs::path path_to_directory{"./"};
 
-  // Iterate over the directory
-  for (const auto& entry : fs::directory_iterator(path_to_directory)) {
-    // Check if the file extension is .dat
-    if (entry.path().extension() == ".dat" ||
-        entry.path().extension() == ".txt") {
-      // If it is, delete the file
-      fs::remove(entry.path());
-    }
-  }
+  // // Iterate over the directory
+  // for (const auto& entry : fs::directory_iterator(path_to_directory)) {
+  //   // Check if the file extension is .dat
+  //   if (entry.path().extension() == ".dat" ||
+  //       entry.path().extension() == ".txt") {
+  //     // If it is, delete the file
+  //     fs::remove(entry.path());
+  //   }
+  // }
 
   return 0;
 };
