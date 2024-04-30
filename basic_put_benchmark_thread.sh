@@ -3,7 +3,7 @@
 # Define the variables
 bits_per_entry=0.0001
 level_ratios=('2' '10')
-buffer_sizes=('2**20')
+buffer_sizes=('2**19')
 modes=0
 threads=('1' '4' '8')
 leveling_partitions=0
@@ -28,7 +28,7 @@ vmstat_data_file="$output_dir/vmstat_data_thread.txt"
 for j in {1..3}
 do 
 
-    ./workloads/generator --puts $((2**23)) --seed $RANDOM > workloads/workload_thread.txt
+    ./workloads/generator --puts $((2**24)) --seed $RANDOM > workloads/workload_thread.txt
 
 
     for level in "${level_ratios[@]}"
@@ -45,7 +45,7 @@ do
                 # Start monitoring in background
                 iostat -dx 2 >> "$iostat_data_file" &
                 iostat_pid=$!
-                vmstat 1 >> "$vmstat_data_file" &
+                vmstat 2 >> "$vmstat_data_file" &
                 vmstat_pid=$!
 
                 # (
@@ -71,8 +71,6 @@ do
                 kill $vmstat_pid
 
                 echo "" >> "$output_file"
-                echo "" >> "$iostat_data_file"
-                echo "" >> "$vmstat_data_file"
 
                 for file in ./*; do
                 # Check if the file has a .dat or .txt extension
