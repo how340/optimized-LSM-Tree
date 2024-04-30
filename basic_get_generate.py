@@ -26,13 +26,11 @@ def write_values(filename, values):
             file.write("g " + str(value) + '\n')
 
 # Main function to process the files
-def process_files(input_filename, num_old_values, num_new_values):
+def process_files(input_filename, output_filename, num_old_values, num_new_values):
     # Read the existing values
     existing_values = read_values(input_filename)
 
-    output_filename = 'get_1.txt'
-    output_filename1 = 'get_2.txt'
-    output_filename2 = 'get_3.txt'
+
 
     # Select a subset of existing values randomly
     selected_old_values = random.sample(sorted(existing_values), num_old_values)
@@ -45,8 +43,7 @@ def process_files(input_filename, num_old_values, num_new_values):
     
     # Write to a new file
     write_values(output_filename, all_values)
-    write_values(output_filename1, all_values)
-    write_values(output_filename2, all_values)
+
 
 
 # Parameters
@@ -55,5 +52,12 @@ input_filename = sys.argv[1]
 num_old_values = 7000
 num_new_values = 3000
 
+
+output_filename = 'get_1.txt'
+output_filename1 = 'get_2.txt'
+output_filename2 = 'get_3.txt'
+    
 # Execute the process
-process_files(input_filename, num_old_values, num_new_values)
+process_files(input_filename,output_filename, num_old_values, num_new_values)
+process_files(input_filename,output_filename1, num_old_values, num_new_values)
+process_files(input_filename,output_filename2, num_old_values, num_new_values)

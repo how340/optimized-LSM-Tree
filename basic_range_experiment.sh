@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Define the variables
 bits_per_entry=0.0001
 level_ratios=('2' '6' '10')
@@ -12,16 +13,11 @@ output_dir="./experiment_results"
 mkdir -p $output_dir
 
 # Output file location
-output_file="./experiment_results/basic_get_benchmark_pc.txt"
+output_file="./experiment_results/basic_range_benchmark_pc.txt"
 # Ensure the output file is empty before starting
-#> "$output_file"
+> "$output_file"
 
-
-# Generate dataset for the experiement - I am reusing the same dataset here to reduce experiment time
-for ((i = 0; i <= 5; i++))
-do
-    ./workloads/generator --puts $((2**((i*2)+15))) --seed $RANDOM > ./workloads/workload_${i}.txt
-done
+python3 basic_range_generate.py
 
 for level in "${level_ratios[@]}"
 do 
@@ -31,15 +27,14 @@ do
         do 
             for i in {0..5}
             do 
-                echo "$((level)) $((buffer)) $((thread)) workload_$i" >> "$output_file"
+                echo "$((level)) $((buffer)) $((thread)) uni_workload_$i" >> "$output_file"
                 (
                     echo "$bits_per_entry $((level)) $((buffer)) $modes $((thread)) $leveling_partitions"   
-                    echo ""                 # Mimic pressing "Enter" to finalize initialization
-                    cat ./workloads/workload_$i.txt  # Send the workload data
+                    echo ""               
+                    cat ./workloads/uni_workload_$i.txt  
                     echo "q" 
                 ) | ./program 
                 
-                python3 basic_get_generate.py workloads/workload_$i.txt
 
                 for rep in {1..3}
                 do 

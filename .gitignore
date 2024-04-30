@@ -41,6 +41,7 @@
 program
 server
 client 
+workloads/generator
 
 #workload related files 
 workloads/*.txt
