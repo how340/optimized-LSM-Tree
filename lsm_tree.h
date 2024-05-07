@@ -27,6 +27,7 @@
    + 1, with the last vector position holding the maximum key value in the
    current run.
 */
+typedef std::vector<Entry> EntryList;
 
 class LSM_Tree {
   size_t num_of_threads;
@@ -66,7 +67,7 @@ class LSM_Tree {
   struct Leveling_Node  // construct a level with the leveling strategy.
   {
     size_t level;
-    Leveling_Node* next_level;  // point to the next_run_tree_node
+    Leveling_Node* next_level = nullptr;  // point to the next_run_tree_node
     Level_Run* leveled_run;// stores the Level_run object. 
   };
 
@@ -78,7 +79,7 @@ class LSM_Tree {
   ******************************************************/
   // evaluation stat variables. PUT operator
   std::chrono::duration<double> accumulated_time;
-  std::chrono::duration<double> merge_accumulated_time;
+  float merge_accumulated_time; 
   std::chrono::duration<double> merge_update_accumulated_time;
   std::chrono::duration<double> merge_del_accumulated_time;
   // GET
@@ -134,9 +135,13 @@ class LSM_Tree {
                                       std::vector<KEY_t> fence_pointers);
 
   // helper functions
-  void print();
+  std::string print();
   std::string generateRandomString(size_t length);
   void print_statistics();
+
+  std::vector<EntryList> splitVector(const EntryList& v, int numParts);
+  EntryList merge_s(const EntryList& leftVec, const EntryList& rightVec);
+  EntryList mergeSort(const EntryList& vec);
 };
 
 #endif

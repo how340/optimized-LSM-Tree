@@ -39,8 +39,8 @@
 
 #binary program file. 
 program
-server
-client 
+server*
+client* 
 workloads/generator
 
 #workload related files 
@@ -52,3 +52,7 @@ test
 #mac files
 *.DS_store
 *.dSYM/
+
+merge_sort*
+#used to keep code snippets here. 
+notebook.cpp 

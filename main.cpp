@@ -1,4 +1,5 @@
-// g++ -g  main.cpp bloom.cpp run.cpp lsm_tree.cpp sys.cpp -o program
+// g++ -g -pthread  main.cpp bloom.cpp run.cpp lsm_tree.cpp sys.cpp
+// level_run.cpp -o program
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -7,7 +8,6 @@
 #include "level_run.h"
 #include "lsm_tree.h"
 #include "run.h"
-#include "sys.h"
 
 namespace fs = std::filesystem;
 
@@ -17,9 +17,9 @@ void command_loop(LSM_Tree* tree) {
   VALUE_t val;
 
   while (std::cin >> command) {
-    if (command == 'q') {  // Assuming 'q' is the command to quit
+    if (command == 'q') {
       tree->exit_save();
-      //tree->print_statistics();
+      // tree->print_statistics();
       break;  // Exit the loop
     }
 
@@ -41,16 +41,15 @@ void command_loop(LSM_Tree* tree) {
                     << ": out of range." << std::endl;
         }
         std::unique_ptr<Entry> entry = tree->get(key_a);
-        // if (entry && !entry->del) {
-        //   std::cout << *entry << std::endl;
-        // } else {
-        //   std::cout << "Not found" << std::endl;
-        // }
+        if (entry && !entry->del) {
+          std::cout << *entry << std::endl;
+        } else {
+          std::cout << "Not found" << std::endl;
+        }
         break;
       }
       case 'r': {  // range
         std::cin >> key_a >> key_b;
-        // TODO: add check to make sure key_a is less than key_b.
         std::vector<Entry_t> ret;
 
         if (key_a < MIN_VAL || key_a > MAX_VAL) {
@@ -63,10 +62,9 @@ void command_loop(LSM_Tree* tree) {
           ret = tree->range(key_a, key_b);
         }
 
-        // if (ret.size() > 0)
-        // {
-        //     std::cout << "Range found" << std::endl;
-        // }
+        if (ret.size() > 0) {
+          std::cout << "Range found" << std::endl;
+        }
 
         for (Entry_t entry : ret) {
           if (!entry.del) {
@@ -85,19 +83,35 @@ void command_loop(LSM_Tree* tree) {
       case 'l': {  // load from binary file.
         std::string file_path;
         std::cin >> file_path;
-
         std::ifstream file(file_path, std::ios::binary);
+        Entry_t entry;
         if (!file) {
-          std::cerr << "Cannot open file: " << file_path << std::endl;
+          throw std::runtime_error("Cannot open file: " + file_path);
         }
 
-        // This can be better. Read in a larger page size to increase speed. 
-        while (file.read(reinterpret_cast<char*>(&key_a), sizeof(key_a)) &&
-               file.read(reinterpret_cast<char*>(&val), sizeof(val))) {
-          tree->put(key_a, val);
+        file.seekg(0, std::ios::end);
+        size_t file_size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::vector<char> file_data(file_size);
+        if (!file.read(file_data.data(), file_size)) {
+          std::cerr << "Error reading file.\n";
+        }
+        // read in the run's information.
+        int idx = 0;
+        while (file_size > 0) {
+          // Entry_t entry;
+          std::memcpy(&entry.key, &file_data[idx], sizeof(KEY_t));
+          idx += sizeof(KEY_t);
+          std::memcpy(&entry.val, &file_data[idx], sizeof(VALUE_t));
+          idx += sizeof(VALUE_t);
+
+          tree->put(entry.key, entry.val);
+          file_size = file_size - (sizeof(VALUE_t) + sizeof(KEY_t));
         }
 
         file.close();
+        // std::cout << "loaded file " << file_path << std::endl; 
         break;
       }
       case 's': {  // print current LSM tree view
@@ -105,7 +119,7 @@ void command_loop(LSM_Tree* tree) {
         break;
       }
       default:
-        die("Invalid command.");
+        std::cout << "Invalid command." << std::endl;
         break;
     }
   }
@@ -123,14 +137,15 @@ LSM_Tree* meta_load_save() {
   std::string line;
 
   // read in the lsm tree meta data (in first line)
-  int bits_per_entry, level_ratio, buffer_size, mode, threads, partition;
+  float bits_per_entry;
+  int level_ratio, buffer_size, mode, threads, partition;
   std::string a, b, c, d, e, f;
   if (std::getline(meta, line)) {
     std::istringstream iss(line);
     if (!(iss >> a >> b >> c >> d >> e >> f)) {
       std::cerr << "error loading lsm isntance meta data" << std::endl;
     };
-    bits_per_entry = std::stoi(a);
+    bits_per_entry = std::stof(a);
     level_ratio = std::stoi(b);
     buffer_size = std::stoi(c);
     mode = std::stoi(d);
@@ -145,7 +160,7 @@ LSM_Tree* meta_load_save() {
 
   lsm_tree->load_memory();
   lsm_tree->reconstruct_file_structure(meta);
-  // std::cout << "done with meta read" << std::endl; 
+  // std::cout << "done with meta read" << std::endl;
   meta.close();
   return lsm_tree;
 };
@@ -170,7 +185,7 @@ int main(int argc, char* argv[]) {
   LSM_Tree* lsm_tree;
 
   if (fs::exists(meta_data_path) && fs::exists(memory_data_path)) {
-    //std::cout << "All save files are present. Loading data..." << std::endl;
+    // std::cout << "All save files are present. Loading data..." << std::endl;
     lsm_tree = meta_load_save();
   } else {
     float bits_per_entry;
@@ -181,11 +196,11 @@ int main(int argc, char* argv[]) {
      *  for preset LSM tree initialization.
      ***************************************/
     // bits_per_entry = 0.0001;
-    // level_ratio = 3;
-    // buffer_size = 100000;
-    // mode = 0;
-    // threads = 4;
-    // leveling_partition = 10;
+    // level_ratio = 2;
+    // buffer_size = 10000;
+    // mode = 1;
+    // threads = 8;
+    // leveling_partition =10;
 
     lsm_tree = new LSM_Tree(bits_per_entry, level_ratio, buffer_size, mode,
                             threads, leveling_partition);
@@ -203,7 +218,7 @@ int main(int argc, char* argv[]) {
   // Calculate the duration in milliseconds (you can also use microseconds,
   // nanoseconds, etc.)
   auto duration =
-  std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   // lsm_tree->print();
   // Output the duration
   std::cout << duration.count() << " milliseconds." << std::endl;

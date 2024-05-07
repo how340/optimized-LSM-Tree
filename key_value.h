@@ -18,15 +18,14 @@ typedef int32_t VALUE_t;
 #define MIN_KEY -2147483648
 
 #define MAX_VAL 2147483647
-#define MIN_VAL -2147483647
-#define TOMBSTONE_VAL -2147483648
+#define MIN_VAL -2147483648
 
 const int SAVE_MEMORY_PAGE_SIZE = 512;
 const int LOAD_MEMORY_PAGE_SIZE =
     SAVE_MEMORY_PAGE_SIZE / 64 + SAVE_MEMORY_PAGE_SIZE;
 const int BOOL_BYTE_CNT = SAVE_MEMORY_PAGE_SIZE / 64;
 const int BLOCK_SIZE =
-    LOAD_MEMORY_PAGE_SIZE * 100000;  // this is quite arbituary for now.
+    LOAD_MEMORY_PAGE_SIZE * 100000; 
 
 // basic int32 key/value pair data structure.
 struct Entry {
@@ -45,9 +44,7 @@ struct Entry {
     }
     return os;
   }
-  // //Default constructor
-  // Entry(KEY_t key, VALUE_t val, bool del = false)
-  //     : key(key), val(val), del(del)  {};
+
 };
 typedef struct Entry Entry_t;
 

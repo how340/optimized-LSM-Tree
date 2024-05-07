@@ -15,13 +15,12 @@
 
 #include "bloom.h"
 #include "key_value.h"
+#include "lib/ThreadPool.h"
 
 // The buffer level uses the CPP map library, which is implemented as black red
 // tree.
 
 class BufferLevel {
-  
-
   int max_size;  // memory limit allocated at the buffer level
   int current_size = 0;
 
@@ -131,7 +130,7 @@ class BufferLevel {
   std::vector<Entry_t> flush_buffer() {
     std::unordered_map<KEY_t, Entry_t> hash_mp;
     std::vector<Entry_t> ret;
-
+    
     for (int i = 0; i < store.size(); i++) {
       Entry_t temp_entry = store[i];
 
@@ -150,7 +149,11 @@ class BufferLevel {
     for (const auto &pair : hash_mp) {
       ret.push_back(pair.second);
     }
+    
+  
+
     std::sort(ret.begin(), ret.end());
+
     return ret;
   }
 };

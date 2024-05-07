@@ -21,10 +21,10 @@ Run::Run(std::string file_name,
 }
 
 Run::Run() {
-  delete bloom; 
-  bloom = nullptr; 
-  delete fence_pointers; 
-  fence_pointers = nullptr; 
+  delete bloom;
+  bloom = nullptr;
+  delete fence_pointers;
+  fence_pointers = nullptr;
 }
 
 bool Run::search_bloom(KEY_t key) {
@@ -99,11 +99,10 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point,
          BOOL_BYTE_CNT) {  // change into binary search if i have time.
     file.read(reinterpret_cast<char*>(&entry->key), sizeof(entry->key));
     file.read(reinterpret_cast<char*>(&entry->val), sizeof(entry->val));
-
     if (key == entry->key) {
       entry->del = del_flag_bitset[63 - idx];
-      file.close();
 
+      file.close();
       return entry;
     }
 
@@ -125,15 +124,12 @@ std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper) {
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open file for reading");
   }
-
-  // get file size
   file.seekg(0, std::ios::end);
-  size_t fileSize = file.tellg();
-
-  // find starting positions.
+  size_t file_size = file.tellg();
+  file.seekg(0, std::ios::beg);
+  // find starting positions on which pages to look at.
   int starting_left = search_fence(lower);
   int starting_right = search_fence(upper);
-
   if (starting_left == -1 && starting_right == -1) {
     if (lower < fence_pointers->at(0) && upper > fence_pointers->back()) {
       starting_left = 0;
@@ -146,39 +142,50 @@ std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper) {
   } else if (starting_left == -1) {
     starting_left = 0;
   }
-  for (int i = starting_left; i <= starting_right; i++) {
-    // modify read_size base on how much more we can read.
-    if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize) {
-      read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
-    } else {
-      read_size = LOAD_MEMORY_PAGE_SIZE;
-    }
+  std::vector<char> file_data(file_size);
 
-    // read in del flags: starting * page_size -> begining of page
-    file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT,
-               std::ios::beg);
+  if (!file.read(file_data.data(), file_size)) {
+    std::cerr << "Error reading file.\n";
+  }
+
+  // read in the run's information.
+  for (int i = starting_left; i < starting_right; i++) {
+    size_t start_index = i * LOAD_MEMORY_PAGE_SIZE;
+    if (start_index >= file_size)
+      break;  // Ensure we do not start beyond the file size
+
+    size_t end_index = (i + 1) * LOAD_MEMORY_PAGE_SIZE;
+    read_size = std::min(end_index, file_size) -
+                start_index;  // Ensures read_size is within bounds
+
+    // read in del flags: starting * page_size -> beginning of page
     uint64_t result;
-    file.read(reinterpret_cast<char*>(&result), BOOL_BYTE_CNT);
+    if (read_size >= BOOL_BYTE_CNT) {
+      std::memcpy(&result, &file_data[start_index + read_size - BOOL_BYTE_CNT],
+                  sizeof(result));
+    } else {
+      result = 0;  // Not enough data to read BOOL_BYTE_CNT bytes
+    }
     std::bitset<64> del_flag_bitset(result);
-    file.seekg(0, std::ios::beg);
 
-    file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
+    // Need to figure out how to part this in one go.
 
-    int idx = 0;
-    while (read_size >
-           BOOL_BYTE_CNT) {  // change into binary search if i have time.
-      file.read(reinterpret_cast<char*>(&entry->key), sizeof(entry->key));
-      file.read(reinterpret_cast<char*>(&entry->val), sizeof(entry->val));
-
-      if (lower <= entry->key && upper >= entry->key) {
-        entry->del = del_flag_bitset[63 - idx];
-        ret.push_back(*entry);
+    int idx = (i - 1) * LOAD_MEMORY_PAGE_SIZE;
+    int cnt = 0;
+    while (idx < read_size - BOOL_BYTE_CNT) {
+      Entry_t entry;
+      std::memcpy(&entry.key, &file_data[idx], sizeof(KEY_t));
+      idx += sizeof(KEY_t);
+      std::memcpy(&entry.val, &file_data[idx], sizeof(VALUE_t));
+      idx += sizeof(KEY_t);
+      entry.del = del_flag_bitset[63 - cnt];
+      cnt++;
+      if (!entry.del && entry.key >= lower && entry.key <= upper) {
+        ret.push_back(entry);
       }
-
-      read_size = read_size - sizeof(entry->key) - sizeof(entry->val);
-      idx++;
     }
   }
+
   file.close();
   return ret;
 }

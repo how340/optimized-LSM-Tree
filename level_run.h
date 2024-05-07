@@ -29,7 +29,9 @@ class Level_Run {
 
   float leveling_flush_ratio = 0.9;
 
-  struct Node {
+ public:
+
+   struct Node {
     BloomFilter* bloom;
     std::vector<KEY_t> fence_pointers;
     std::string file_location;
@@ -52,7 +54,6 @@ class Level_Run {
 
   Node* root;
 
- public:
   Level_Run(ThreadPool& pool,
             int max_size,
             int level,
@@ -90,7 +91,7 @@ class Level_Run {
   int search_fence(KEY_t key, std::vector<KEY_t>&);
   std::unordered_map<KEY_t, Entry_t> range_block_search(KEY_t, KEY_t, Node*);
   // helper functions
-  void print();
+  std::string print();
   std::string generate_file_name(size_t length);
   int return_size();
   int return_max_size();

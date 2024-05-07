@@ -1,5 +1,6 @@
 #include "level_run.h"
 
+// this function finds which blocks to insert the buffer values into in a given level.
 void Level_Run::insert_block(std::vector<Entry_t>& buffer) {
   KEY_t left = buffer[0].key;
   KEY_t right = buffer.back().key;
@@ -189,9 +190,7 @@ std::vector<Entry_t> Level_Run::load_full_file(
 
 // return the first node in the chain that needs to be inserted.
 Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
-  // this is causing issue for the system being slow. I think this should be
-  // dependent on the level. Maybe we should set the number of blocks to be
-  // constant, and shift only the size of the number of entries in each block.
+  // setting a static number of underlying file blocks.
   int block_entry_cnt =
       pow(level_ratio, current_level + 1) * buffer_size / max_size + 1;
   int block_cnt = vec.size() / block_entry_cnt + 1;
@@ -204,12 +203,10 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
 
   Entry_t entry;
   std::vector<std::future<Node*>> futures;
-
   while (block_cnt > 0) {
     if (vector_partitions_r > vec.size()) {  // keep everything inbound.
       vector_partitions_r = vec.size();
     }
-
     futures.push_back(pool.enqueue([&vec, vector_partitions_l,
                                     vector_partitions_r, this]() -> Node* {
       Node* temp_nd;
@@ -234,6 +231,7 @@ Level_Run::Node* Level_Run::save_to_memory(std::vector<Entry_t>& vec) {
   return chain_start;
 }
 
+// process the information into file blocks for leveled level. 
 Level_Run::Node* Level_Run::process_block(const std::vector<Entry_t>& vec,
                                           int l,
                                           int r) {
@@ -292,8 +290,6 @@ Level_Run::Node* Level_Run::process_block(const std::vector<Entry_t>& vec,
     }
   }
 
-  fence_pointers.push_back(end->key);
-
   if (bool_bits.size() > 0) {
     while (bool_bits.size() < 64) {
       int padding = 0;
@@ -314,8 +310,8 @@ Level_Run::Node* Level_Run::process_block(const std::vector<Entry_t>& vec,
   out.close();
   // construct node* for return
   Node* node = new Node;
-  node->lower = start->key;
-  node->upper = end->key;
+  node->lower = fence_pointers.front();
+  node->upper = fence_pointers.back();
   node->file_location = filename;
   node->bloom = bloom;
   node->fence_pointers = fence_pointers;
@@ -332,9 +328,10 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   std::mt19937 eng(rd());
   return_size();  // refresh current size.
   int blocks_to_flush =
-      current_size - max_size * 2/3;  // this division here dictates how much
-                                         // of the level is flushed down. Need to change in LSM_tree.cpp too
-  std::uniform_int_distribution<> distr(0, max_size * 2/3);
+      current_size - max_size * 2 / 3;  // this division here dictates how much
+                                        // of the level is flushed down. Need to
+                                        // change in LSM_tree.cpp too
+  std::uniform_int_distribution<> distr(0, max_size * 2 / 3);
 
   // std::cout << "flushing: " << blocks_to_flush << std::endl;
   int start_point = distr(eng);
@@ -344,7 +341,7 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   // watch the off by one.
   while (idx < start_point - 1) {
     cur = cur->next;
-    idx++; 
+    idx++;
   }
 
   Node* front = cur;
@@ -364,7 +361,7 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
           temp[entry.key] = entry;
         }
       }
-      std::cout << temp.size() << std::endl; 
+
       return temp;
     }));
   }
@@ -372,27 +369,23 @@ std::unordered_map<KEY_t, Entry> Level_Run::flush() {
   if (cur) {
     front->next = cur->next;
     cur->next = nullptr;  // i don't lose a block here right?
-  } else {// if cur is already a nullptr -- reached end of the linked list.
+  } else {  // if cur is already a nullptr -- reached end of the linked list.
     front->next = nullptr;
   }
 
-
-
   std::unordered_map<KEY_t, Entry> ret;
   for (auto& fut : futures) {
-
     std::unordered_map<KEY_t, Entry> results = fut.get();
 
     ret.merge(results);
-
   }
-    
+  // std::cout << ret.size() << " moved leveling" << std::endl;
   while (to_delete) {
     Node* tmp = to_delete->next;
     delete to_delete;
     to_delete = tmp;
   }
-    
+
   // futures.clear();
   return ret;
 }
@@ -405,9 +398,7 @@ std::unique_ptr<Entry_t> Level_Run::get(KEY_t key) {
     if (key >= cur->lower && key <= cur->upper) {
       if (cur->bloom->is_set(key)) {
         // do disk search
-
         int starting_point = search_fence(key, cur->fence_pointers);
-
         ret = disk_search(key, cur->file_location, starting_point);
         if (ret) {
           return ret;
@@ -502,6 +493,7 @@ int Level_Run::search_fence(KEY_t key, std::vector<KEY_t>& fence_pointers) {
   return -1;  // return -1 if we hit a false positive with bloom filter.
 }
 
+// search a range on disk. 
 std::unordered_map<KEY_t, Entry_t> Level_Run::range_search(KEY_t lower,
                                                            KEY_t upper) {
   std::unordered_map<KEY_t, Entry_t> ret;
@@ -532,6 +524,8 @@ std::unordered_map<KEY_t, Entry_t> Level_Run::range_block_search(KEY_t lower,
                                                                  KEY_t upper,
                                                                  Node* cur) {
   std::unordered_map<KEY_t, Entry_t> ret;
+
+  std::cout << cur->file_location << std::endl;
   std::ifstream file(cur->file_location, std::ios::binary);
   size_t read_size;
   Entry_t entry;
@@ -540,14 +534,12 @@ std::unordered_map<KEY_t, Entry_t> Level_Run::range_block_search(KEY_t lower,
     throw std::runtime_error("Failed to open file for reading");
   }
 
-  // get file size
   file.seekg(0, std::ios::end);
-  size_t fileSize = file.tellg();
-
-  // find starting positions.
+  size_t file_size = file.tellg();
+  file.seekg(0, std::ios::beg);
+  // find starting positions on which pages to look at.
   int starting_left = search_fence(lower, cur->fence_pointers);
   int starting_right = search_fence(upper, cur->fence_pointers);
-
   if (starting_left == -1 && starting_right == -1) {
     if (lower < cur->fence_pointers.at(0) &&
         upper > cur->fence_pointers.back()) {
@@ -561,52 +553,120 @@ std::unordered_map<KEY_t, Entry_t> Level_Run::range_block_search(KEY_t lower,
   } else if (starting_left == -1) {
     starting_left = 0;
   }
-  for (int i = starting_left; i <= starting_right; i++) {
-    // modify read_size base on how much more we can read.
-    if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize) {
-      read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
-    } else {
-      read_size = LOAD_MEMORY_PAGE_SIZE;
-    }
 
-    // read in del flags: starting * page_size -> begining of page
-    file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT,
-               std::ios::beg);
+  std::vector<char> file_data(file_size);
+
+  if (!file.read(file_data.data(), file_size)) {
+    std::cerr << "Error reading file.\n";
+  }
+
+  // read in the run's information.
+  for (int i = starting_left; i < starting_right; i++) {
+    size_t start_index = i * LOAD_MEMORY_PAGE_SIZE;
+    if (start_index >= file_size)
+      break;  // Ensure we do not start beyond the file size
+
+    size_t end_index = (i + 1) * LOAD_MEMORY_PAGE_SIZE;
+    read_size = std::min(end_index, file_size) -
+                start_index;  // Ensures read_size is within bounds
+
+    // read in del flags: starting * page_size -> beginning of page
     uint64_t result;
-    file.read(reinterpret_cast<char*>(&result), BOOL_BYTE_CNT);
+    if (read_size >= BOOL_BYTE_CNT) {
+      std::memcpy(&result, &file_data[start_index + read_size - BOOL_BYTE_CNT],
+                  sizeof(result));
+    } else {
+      result = 0;  // Not enough data to read BOOL_BYTE_CNT bytes
+    }
     std::bitset<64> del_flag_bitset(result);
-    file.seekg(0, std::ios::beg);
 
-    file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
+    // Need to figure out how to part this in one go.
 
-    int idx = 0;
-    while (read_size >
-           BOOL_BYTE_CNT) {  // change into binary search if i have time.
-      file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
-      file.read(reinterpret_cast<char*>(&entry.val), sizeof(entry.val));
-
-      if (lower <= entry.key && upper >= entry.key) {
-        entry.del = del_flag_bitset[63 - idx];
+    int idx = (i - 1) * LOAD_MEMORY_PAGE_SIZE;
+    int cnt = 0;
+    while (idx < read_size - BOOL_BYTE_CNT) {
+      Entry_t entry;
+      std::memcpy(&entry.key, &file_data[idx], sizeof(KEY_t));
+      idx += sizeof(KEY_t);
+      std::memcpy(&entry.val, &file_data[idx], sizeof(VALUE_t));
+      idx += sizeof(KEY_t);
+      entry.del = del_flag_bitset[63 - cnt];
+      cnt++;
+      if (!entry.del && entry.key >= lower && entry.key <= upper) {
         ret[entry.key] = entry;
       }
-
-      read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
-      idx++;
     }
   }
+
   file.close();
   return ret;
+  // // get file size
+  // file.seekg(0, std::ios::end);
+  // size_t fileSize = file.tellg();
+
+  // // find starting positions.
+  // int starting_left = search_fence(lower, cur->fence_pointers);
+  // int starting_right = search_fence(upper, cur->fence_pointers);
+
+  // if (starting_left == -1 && starting_right == -1) {
+  //   if (lower < cur->fence_pointers.at(0) &&
+  //       upper > cur->fence_pointers.back()) {
+  //     starting_left = 0;
+  //     starting_right = cur->fence_pointers.size() - 1;
+  //   } else {
+  //     return ret;
+  //   }
+  // } else if (starting_right == -1) {
+  //   starting_right = cur->fence_pointers.back();
+  // } else if (starting_left == -1) {
+  //   starting_left = 0;
+  // }
+  // for (int i = starting_left; i <= starting_right; i++) {
+  //   // modify read_size base on how much more we can read.
+  //   if ((i + 1) * LOAD_MEMORY_PAGE_SIZE > fileSize) {
+  //     read_size = fileSize - i * LOAD_MEMORY_PAGE_SIZE;
+  //   } else {
+  //     read_size = LOAD_MEMORY_PAGE_SIZE;
+  //   }
+
+  //   // read in del flags: starting * page_size -> begining of page
+  //   file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT,
+  //              std::ios::beg);
+  //   uint64_t result;
+  //   file.read(reinterpret_cast<char*>(&result), BOOL_BYTE_CNT);
+  //   std::bitset<64> del_flag_bitset(result);
+  //   file.seekg(0, std::ios::beg);
+
+  //   file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
+
+  //   int idx = 0;
+  //   while (read_size >
+  //          BOOL_BYTE_CNT) {  // change into binary search if i have time.
+  //     file.read(reinterpret_cast<char*>(&entry.key), sizeof(entry.key));
+  //     file.read(reinterpret_cast<char*>(&entry.val), sizeof(entry.val));
+
+  //     if (lower <= entry.key && upper >= entry.key) {
+  //       entry.del = del_flag_bitset[63 - idx];
+  //       ret[entry.key] = entry;
+  //     }
+
+  //     read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
+  //     idx++;
+  //   }
+  // }
+  // file.close();
+  // return ret;
 }
 
-void Level_Run::print() {
+std::string Level_Run::print() {
   Node* cur = root;
-
+  std::ostringstream oss;
   while (cur) {
-    std::cout << "node filename " << cur->file_location << std::endl;
-    std::cout << "file range " << cur->lower << " -> " << cur->upper
-              << std::endl;
+    oss << "node filename: " << cur->file_location << " range: " << cur->lower
+        << "->" << cur->upper << std::endl;
     cur = cur->next;
   }
+  return oss.str();
 }
 
 // helper function for generating a file_name for on-disk storage file name.
