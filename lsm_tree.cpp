@@ -244,8 +244,10 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
           typename std::vector<Entry_t>::reverse_iterator rit = back;
           while (remaining > 0) {
             Entry_t entry = *rit;
-            if (!entry.del && entry.key <= upper && entry.key >= lower) {
-              tmp[entry.key] = entry;
+            if (entry.key <= upper && entry.key >= lower) {
+              if (tmp.find(entry.key) == tmp.end()){
+                  tmp[entry.key] = entry;
+              }
             }
             rit++;
             remaining--;

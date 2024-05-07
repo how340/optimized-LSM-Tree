@@ -62,16 +62,14 @@ void command_loop(LSM_Tree* tree) {
           ret = tree->range(key_a, key_b);
         }
 
-        if (ret.size() > 0) {
-          std::cout << "Range found" << std::endl;
-        }
+        // if (ret.size() > 0) {
+        //   std::cout << "Range found" << std::endl;
+        // }
 
         for (Entry_t entry : ret) {
           if (!entry.del) {
             std::cout << entry.key << ":" << entry.val << std::endl;
-          } else {
-            std::cout << "Not found (deleted)" << std::endl;
-          }
+          } 
         }
         break;
       }
