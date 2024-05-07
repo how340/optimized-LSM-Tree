@@ -38,7 +38,6 @@ std::string Run::get_file_location() {
 int Run::search_fence(KEY_t key) {
   int starting_point;
 
-  // TODO: I can probably do this with binary search as well.
   for (int i = 0; i < fence_pointers->size(); ++i) {
     // special case for matching at the last fence post
     if (i == fence_pointers->size() - 1) {

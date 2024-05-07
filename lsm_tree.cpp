@@ -29,26 +29,26 @@ LSM_Tree::LSM_Tree(float bits_ratio,
 }
 
 LSM_Tree::~LSM_Tree() {
-  delete in_mem;  
+  delete in_mem;
 
   Level_Node* temp;
-  while (root){
-      temp = root;
-      root = root->next_level;
-      delete temp;
+  while (root) {
+    temp = root;
+    root = root->next_level;
+    delete temp;
   }
 
   Leveling_Node* temp2;
-  while (level_root){
-    temp2 = level_root; 
-    level_root = level_root->next_level; 
-    delete temp2; 
+  while (level_root) {
+    temp2 = level_root;
+    level_root = level_root->next_level;
+    delete temp2;
   }
   level_root = nullptr;
 }
 /**
  * LSM_Tree put
- * insert a key value pair into tree. 
+ * insert a key value pair into tree.
  * @param  {KEY_t} key   :
  * @param  {VALUE_t} val :
  */
@@ -84,7 +84,7 @@ void LSM_Tree::put(Entry_t entry) {
 
 /**
  * LSM_Tree get
- * search for key value pair and return value if exists. 
+ * search for key value pair and return value if exists.
  * @param  {KEY_t} key                 :
  * @return {std::unique_ptr<Entry_t>}  :
  */
@@ -244,9 +244,10 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
           typename std::vector<Entry_t>::reverse_iterator rit = back;
           while (remaining > 0) {
             Entry_t entry = *rit;
+
             if (entry.key <= upper && entry.key >= lower) {
-              if (tmp.find(entry.key) == tmp.end()){
-                  tmp[entry.key] = entry;
+              if (tmp.find(entry.key) == tmp.end()) {
+                tmp[entry.key] = entry;
               }
             }
             rit++;
@@ -329,7 +330,7 @@ std::vector<Entry_t> LSM_Tree::range(KEY_t lower, KEY_t upper) {
 
 /**
  * LSM_Tree del
- *  This function deletes a key in the LSM Tree. 
+ *  This function deletes a key in the LSM Tree.
  */
 void LSM_Tree::del(KEY_t key) {
   int del_result;
@@ -541,9 +542,9 @@ void LSM_Tree::merge_policy() {
           float bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2))));
 
           // change here to make dynamic level ratio after the leveling levels.
-          level_cur->next_level->leveled_run =
-              new Level_Run(pool, leveling_partitions * level_cur->level, level_cur->level + 1,
-                            level_ratio, buffer_size, bloom_bits);
+          level_cur->next_level->leveled_run = new Level_Run(
+              pool, leveling_partitions * level_cur->level,
+              level_cur->level + 1, level_ratio, buffer_size, bloom_bits);
         }
 
         std::unordered_map<KEY_t, Entry_t> tmp = partial_merge(level_cur);
@@ -559,9 +560,9 @@ void LSM_Tree::merge_policy() {
     }
     std::sort(merge_buffer.begin(), merge_buffer.end());
 
-    //std::cout << merge_buffer.size() << " moved" << std::endl;
-    // push the merged vector into different levels depend on whether the
-    // leveling level is needed.
+    // std::cout << merge_buffer.size() << " moved" << std::endl;
+    //  push the merged vector into different levels depend on whether the
+    //  leveling level is needed.
     if (max_level == lazy_cut_off) {
       level_cur->leveled_run->insert_block(merge_buffer);
 
@@ -646,7 +647,7 @@ Run LSM_Tree::create_run(std::vector<Entry_t> buffer, int current_level) {
 
   cur_FPR = bloom_bits_per_entry * pow(level_ratio, current_level);
   bloom_bits = ceil(-(log(cur_FPR) / (pow(log(2), 2))));
-  if (bloom_bits <= 5){
+  if (bloom_bits <= 5) {
     bloom_bits = 5;
   }
   BloomFilter* bloom = new BloomFilter(bloom_bits * buffer.size());
@@ -760,8 +761,8 @@ void LSM_Tree::save_to_memory(std::string filename,
 }
 
 /**
- * LSM_Tree exit_save_memory(): 
- * this function saves the data from the buffer into a binary file when exiting. 
+ * LSM_Tree exit_save_memory():
+ * this function saves the data from the buffer into a binary file when exiting.
  */
 void LSM_Tree::exit_save_memory() {
   std::vector<int> bool_bits;
@@ -949,7 +950,7 @@ void LSM_Tree::print_statistics() {
   // delete is essentially the same as get.
 }
 
-// this function reads in the binary file storing data last in buffer. 
+// this function reads in the binary file storing data last in buffer.
 void LSM_Tree::load_memory() {
   std::string memory_data = "lsm_tree_memory.dat";
   std::ifstream memory(memory_data, std::ios::binary);
@@ -1000,7 +1001,7 @@ void LSM_Tree::load_memory() {
   memory.close();
 }
 
-// this function reconstructs the lsm structure from the saved txt file. 
+// this function reconstructs the lsm structure from the saved txt file.
 void LSM_Tree::reconstruct_file_structure(std::ifstream& meta) {
   std::string line;
   Level_Node* cur = root;
@@ -1046,7 +1047,7 @@ void LSM_Tree::reconstruct_file_structure(std::ifstream& meta) {
         bloom.close();
       }
     } else if (mode == 1) {
-      int level; 
+      int level;
       if (std::isdigit(line[0])) {
         // std::string level, max_run, run_cnt;
         std::string a, b, c;
@@ -1097,15 +1098,14 @@ void LSM_Tree::reconstruct_file_structure(std::ifstream& meta) {
         while (fence.read(reinterpret_cast<char*>(&key), sizeof(KEY_t))) {
           fence_pointer->push_back(key);
         }
-        // tiered level insert. 
+        // tiered level insert.
         if (level < lazy_cut_off) {
           Run run(filename, bloom_filter, fence_pointer);
           cur->run_storage.push_back(run);
           fence.close();
           bloom.close();
         } else {
-
-          // leveling level insert. 
+          // leveling level insert.
           Level_Run::Node* in_level_cur = level_cur->leveled_run->root;
           if (in_level_cur == level_cur->leveled_run->root &&
               in_level_cur->is_empty) {
@@ -1135,12 +1135,10 @@ void LSM_Tree::reconstruct_file_structure(std::ifstream& meta) {
   }
 }
 
-
-// this function loads the content of a full binary file. 
+// this function loads the content of a full binary file.
 std::vector<Entry_t> LSM_Tree::load_full_file(
     std::string file_location,
     std::vector<KEY_t> fence_pointers) {
-
   std::ifstream file(file_location, std::ios::binary);
   if (!file.is_open())
     throw std::runtime_error("Unable to open file for loading");
@@ -1228,7 +1226,7 @@ std::string LSM_Tree::print() {
 
 /*************************************************************
  *   The following are helper function to implement merge sort
-***************************************************************/
+ ***************************************************************/
 
 std::vector<EntryList> LSM_Tree::splitVector(const EntryList& v, int numParts) {
   std::vector<EntryList> parts;

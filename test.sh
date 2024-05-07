@@ -19,13 +19,13 @@
 # done 
 # echo "q" ) | ./program
 
-# # normal read
-./workloads/generator --puts 200000 --gets 2000 --gets-misses-ratio 0 --seed $RANDOM > ./workloads/workload_demo.txt
+# # # normal read
+# ./workloads/generator --puts 200000 --gets 2000 --gets-misses-ratio 0 --seed $RANDOM > ./workloads/workload_demo.txt
 
-(echo "0.0001 10 131072 0 8 0"  #
-echo ""  
-cat workloads/workload_demo.txt
-echo "q" ) | ./program 
+# (echo "0.0001 10 131072 0 8 0"  #
+# echo ""  
+# cat workloads/workload_demo.txt
+# echo "q" ) | ./program 
 
 # skewed read
 # ./workloads/generator --puts 200000 --gets 2000 --gets-skewness 0.5 --gets-miss 0 --seed $RANDOM > ./workloads/workload_demo.txt
@@ -44,3 +44,10 @@ echo "q" ) | ./program
 #     #echo "Deleted: $file"
 #   fi
 # done
+
+
+(echo "0.0001 10 131072 0 8 0"  #
+echo ""  
+cat workloads/workload_demo.txt
+cat workloads/get_3.txt
+echo "q" ) | ./program 
