@@ -1,4 +1,4 @@
-// g++ -g -pthread  main.cpp bloom.cpp run.cpp lsm_tree.cpp sys.cpp
+// g++ -g -pthread  main.cpp bloom.cpp run.cpp lsm_tree.cpp 
 // level_run.cpp -o program
 #include <filesystem>
 #include <iostream>
@@ -44,7 +44,7 @@ void command_loop(LSM_Tree* tree) {
         if (entry && !entry->del) {
           std::cout << *entry << std::endl;
         } else {
-          std::cout << "Not found" << std::endl;
+          std::cout << key_a << " Not found" << std::endl;
         }
         break;
       }
