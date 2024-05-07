@@ -15,9 +15,10 @@
 
 namespace fs = std::filesystem;
 
-std::mutex tree_mutex;  // Global mutex for LSM_Tree access
+std::mutex tree_mutex; // Global mutex for LSM_Tree access
 
-std::string http_command_process(LSM_Tree* tree, std::string input) {
+std::string http_command_process(LSM_Tree *tree, std::string input)
+{
   // create file stream for handling the command.
   std::stringstream ss(input);
   std::string command;
@@ -27,61 +28,81 @@ std::string http_command_process(LSM_Tree* tree, std::string input) {
 
   ss >> command;
 
-  if (command == "q") {
+  if (command == "q")
+  {
     tree->exit_save();
     std::cout << "shutting down..." << std::endl;
     return_msg = "shutdown";
     return return_msg;
   }
 
-  if (command == "cq") {
+  if (command == "cq")
+  {
     std::cout << "shutting down client" << std::endl;
     return_msg = "shutdown-c";
     return return_msg;
   }
 
-  try {
-    if (command == "p") {  // put
+  try
+  {
+    if (command == "p")
+    { // put
       ss >> key_a >> val;
       tree->put(key_a, val);
       return_msg = "Key-value set!";
-    } else if (command == "g") {  // get
+    }
+    else if (command == "g")
+    { // get
       ss >> key_a;
       auto value = tree->get(key_a);
-      if (value) {
+      if (value && !value->del)
+      {
         std::stringstream oss;
         oss << *value << " found!";
         return_msg = oss.str();
-      } else {
+      }
+      else
+      {
         return_msg = "Key not found!";
       }
-    } else if (command == "r") {  // range
+    }
+    else if (command == "r")
+    { // range
       ss >> key_a >> key_b;
 
-      if (key_b < key_a) {  // make sure key a is less than key b.
+      if (key_b < key_a)
+      { // make sure key a is less than key b.
         KEY_t tmp = key_a;
         key_a = key_b;
         key_b = key_a;
       }
 
       auto range_values = tree->range(key_a, key_b);
-      std::stringstream oss;  // in case i want to return this later.
-      for (const auto& entry : range_values) {
-        oss << entry.key << ":" << entry.val << std::endl;
+      std::stringstream oss; // in case i want to return this later.
+      for (const auto &entry : range_values)
+      {
+        if (!entry.del)
+        {
+          oss << entry.key << ":" << entry.val << std::endl;
+        }
       }
       return_msg = oss.str();
-    } else if (command == "d") {  // delete
+    }
+    else if (command == "d")
+    { // delete
       ss >> key_a;
       tree->del(key_a);
       return_msg = "Key deleted";
-
-    } else if (command == "l") {  // load
+    }
+    else if (command == "l")
+    { // load
       std::string file_path;
 
       ss >> file_path;
       std::ifstream file(file_path, std::ios::binary);
 
-      if (!file) {
+      if (!file)
+      {
         throw std::runtime_error("Cannot open file: " + file_path);
       }
 
@@ -90,12 +111,14 @@ std::string http_command_process(LSM_Tree* tree, std::string input) {
       file.seekg(0, std::ios::beg);
 
       std::vector<char> file_data(file_size);
-      if (!file.read(file_data.data(), file_size)) {
+      if (!file.read(file_data.data(), file_size))
+      {
         std::cerr << "Error reading file.\n";
       }
       // read in the run's information.
       int idx = 0;
-      while (file_size > 0) {
+      while (file_size > 0)
+      {
         Entry_t entry;
         std::memcpy(&entry.key, &file_data[idx], sizeof(KEY_t));
         idx += sizeof(KEY_t);
@@ -108,23 +131,30 @@ std::string http_command_process(LSM_Tree* tree, std::string input) {
 
       file.close();
       return_msg = "file loaded";
-    } else if (command == "s") {  // print structure
+    }
+    else if (command == "s")
+    { // print structure
       return_msg = tree->print();
     }
-  } catch (const std::exception& e) {
+  }
+  catch (const std::exception &e)
+  {
     return_msg = "Invalid command. Try again!";
     return return_msg;
   };
 
   return return_msg;
 }
-void taskProcessor(LSM_Tree* tree,
-                   MyTaskQueue& taskQueue,
-                   std::map<std::string, std::string>& results) {
+void taskProcessor(LSM_Tree *tree,
+                   MyTaskQueue &taskQueue,
+                   std::map<std::string, std::string> &results)
+{
   std::mutex results_mutex;
-  while (true) {
+  while (true)
+  {
     Task task;
-    if (taskQueue.pop(task)) {
+    if (taskQueue.pop(task))
+    {
       std::cout << "Processing task with data: " << task.data << std::endl;
       auto start = std::chrono::high_resolution_clock::now();
       std::string ret = http_command_process(tree, task.data);
@@ -136,13 +166,16 @@ void taskProcessor(LSM_Tree* tree,
       auto duration =
           std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
       std::cout << duration.count() << " milliseconds." << std::endl;
-    } else {
+    }
+    else
+    {
       std::this_thread::sleep_for(std::chrono::milliseconds(
-          100));  // Sleep briefly if no task is available
+          100)); // Sleep briefly if no task is available
     }
   }
 }
-std::string generate_unique_id() {
+std::string generate_unique_id()
+{
   unsigned long long counter;
   std::string base;
   auto now = std::chrono::system_clock::now();
@@ -156,7 +189,8 @@ std::string generate_unique_id() {
 
   return ss.str();
 }
-int main() {
+int main()
+{
   using namespace httplib;
 
   /********************************************************
@@ -169,10 +203,11 @@ int main() {
   std::mutex results_mutex;
 
   // Add in load data meta data files.
-  LSM_Tree* lsm_tree = new LSM_Tree(0.0001, 10, 10000, 0, 8, 0);
+  LSM_Tree *lsm_tree = new LSM_Tree(0.0001, 10, 10000, 0, 8, 0);
 
   // POST endpoint
-  svr.Post("/post", [&](const Request& req, Response& res) {
+  svr.Post("/post", [&](const Request &req, Response &res)
+           {
     std::string command = req.body;  // Command is received in the body
 
     if (req.body.empty()) {
@@ -196,10 +231,10 @@ int main() {
       results_mutex.unlock();
 
       res.set_content(task_id, "text/plain");
-    }
-  });
+    } });
 
-  svr.Get("/status", [&](const Request& req, Response& res) {
+  svr.Get("/status", [&](const Request &req, Response &res)
+          {
     auto id = req.get_param_value("id");
     std::lock_guard<std::mutex> lock(results_mutex);
     if (results.find(id) != results.end()) {
@@ -208,12 +243,12 @@ int main() {
           id);  // remove the info from results to keep memory overhead low.
     } else {
       res.set_content("Task ID not found", "text/plain");
-    }
-  });
+    } });
 
   // Start the task processor thread
   std::thread worker(
-      [&]() { taskProcessor(lsm_tree, std::ref(taskQueue), results); });
+      [&]()
+      { taskProcessor(lsm_tree, std::ref(taskQueue), results); });
   worker.detach();
 
   svr.listen("127.0.0.1", 8080);

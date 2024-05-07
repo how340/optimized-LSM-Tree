@@ -1,4 +1,4 @@
-// g++ -o client client.cpp -pthread
+// g++ -std=c++17 -o client client.cpp -pthread
 #include <chrono>
 #include <iostream>
 #include <string>
